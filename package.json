@@ -28,8 +28,7 @@
   "scripts": {
     "build": "bun build src/cli/index.ts --target node --packages external --outfile dist/cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src",
-    "prepublishOnly": "bun run typecheck && bun test src && bun run build"
+    "test": "bun test src"
   },
   "dependencies": {
     "zod": "^4"

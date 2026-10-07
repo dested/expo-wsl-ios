@@ -5,7 +5,7 @@ Build your Expo app and run it on a real iPhone, from Windows. No Mac, no EAS, n
 It compiles natively in WSL against Apple's real iOS SDK, signs with your App Store Connect key, and installs over USB.
 
 ```sh
-npm i -D expo-wsl-ios
+npm i -D github:dested/expo-wsl-ios
 npx expo-wsl-ios setup --xip Xcode_27.xip --asc-key AuthKey_ABC123DEF4.p8 --issuer-id <uuid>
 npx expo-wsl-ios run
 ```
@@ -77,11 +77,12 @@ This is a one-time setup, about 30 minutes plus Apple's paperwork. You'll end up
 - WSL: in an **admin** PowerShell, run `wsl --install --no-distribution` and reboot. Skip this if `wsl --version` already works.
 - [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store. This is the iPhone USB driver. Open it once.
 - uv: `winget install astral-sh.uv`, then open a new terminal. Setup uses it to install pymobiledevice3.
+- Git: `winget install Git.Git`, if `git --version` doesn't work. npm needs it to install from GitHub.
 
 **5. Run setup** from your Expo project (Expo SDK 57 or newer), with your own paths and issuer id:
 
 ```sh
-npm i -D expo-wsl-ios
+npm i -D github:dested/expo-wsl-ios
 npx expo-wsl-ios setup --xip C:\Users\you\Downloads\Xcode_27.xip --asc-key C:\Users\you\Downloads\AuthKey_XXXXXXXXXX.p8 --issuer-id 69a6de7f-1234-47e3-e053-5b8c7c11a4d1
 ```
 
@@ -102,8 +103,8 @@ The whole trip in PowerShell, from nothing to an app on the phone. Steps 3 and 4
 npx create-expo-app@latest myapp
 cd myapp
 
-# 2. Add expo-wsl-ios to the project
-npm i -D expo-wsl-ios
+# 2. Add expo-wsl-ios to the project (straight from GitHub; it isn't on npm)
+npm i -D github:dested/expo-wsl-ios
 
 # 3. One-time machine setup (see "Setup, step by step" for where these three come from)
 npx expo-wsl-ios setup `
@@ -195,25 +196,23 @@ wsl --unregister expo-wsl-ios
 Remove-Item -Recurse -Force $env:LOCALAPPDATA\expo-wsl-ios
 ```
 
-## Running it from source
+## Hacking on it
 
-Until it's on npm, or to hack on it, you need git, [bun](https://bun.sh) and Node 20+:
+It isn't published to npm: `npm i -D github:dested/expo-wsl-ios` installs main, with the built CLI committed in `dist\cli.js`. To change it, you need git, [bun](https://bun.sh) and Node 20+:
 
 ```powershell
 git clone https://github.com/dested/expo-wsl-ios
 cd expo-wsl-ios
 bun install
-bun run build                      # the Windows CLI: dist\cli.js
-npm pack                           # expo-wsl-ios-0.1.0.tgz, exactly what npm would ship
 
 cd ..\myapp
-npm i -D ..\expo-wsl-ios\expo-wsl-ios-0.1.0.tgz
+npm i -D ..\expo-wsl-ios           # link the clone into your app
 npx expo-wsl-ios doctor
 ```
 
-To hack on it, link the clone instead with `npm i -D ..\expo-wsl-ios`. Edits to the generator and the shell scripts apply on the next `run`; edits to `src/cli` need `bun run build` first.
+Edits to the generator and the shell scripts apply on the next `run`. Edits to `src/cli` need `bun run build`, and `bun test src` fails until the committed `dist\cli.js` matches the source.
 
-Until the prebuilt distro is published as a release, build it yourself. It takes about 45 minutes on 6 vCPUs and makes `out\expo-wsl-ios-rootfs-1.tar.gz`:
+To build the distro yourself instead of downloading the release, run this. It takes about 45 minutes on 6 vCPUs and makes `out\expo-wsl-ios-rootfs-1.tar.gz`:
 
 ```powershell
 cd expo-wsl-ios
