@@ -5,7 +5,7 @@ set -euo pipefail
 USER_NAME="${1:-expo}"
 home="/home/$USER_NAME"
 pacman -Scc --noconfirm >/dev/null
-rm -rf "$home/.cache/yay" "$home/.cache/pip" "$home/.cache/org.swift.swiftpm" \
+rm -rf "$home/.cache/yay" "$home/.cache/pip" "$home/.cache/org.swift.swiftpm" "$home/.cache/clang" \
   "$home"/.cache/omarchy-apple-dev/xtool-* "$home/.config/expo-wsl-ios" "$home/.bash_history" /root/.bash_history
 rm -rf /tmp/* /var/tmp/* /var/log/journal/* /var/cache/pacman/pkg/*
 du -sh /usr /home /var 2>/dev/null

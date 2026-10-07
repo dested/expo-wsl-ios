@@ -3,7 +3,7 @@
 // Resumable: rerun after a failure and finished steps are cheap no-ops.
 //   bun rootfs/build.ts [--tag 1] [--keep]     (maintainers only; runs on 6 vCPUs by default)
 import { createHash } from 'node:crypto';
-import { createReadStream, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
@@ -54,9 +54,19 @@ mkdirSync(resolve(ROOT, 'out'), { recursive: true });
 await runInherit('wsl.exe', ['--export', NAME, out, '--format', 'tar.gz'], { env });
 const sum = await sha256(out);
 writeFileSync(`${out}.sha256`, `${sum}  ${basename(out)}\n`);
-const gb = statSync(out).size / 1024 ** 3;
-console.log(`\n${out}\n  ${gb.toFixed(2)} GiB, sha256 ${sum}`);
-if (gb >= 2) console.log('  ! over GitHub\'s 2 GiB release-asset limit: split it or trim more in clean.sh');
+const size = statSync(out).size;
+console.log(`\n${out}\n  ${(size / 1024 ** 3).toFixed(2)} GiB, sha256 ${sum}`);
+// GitHub release assets max out at 2 GiB: upload <name>.part1..N instead; `setup` reassembles them
+// and checks the whole file against <name>.sha256.
+const PART = 1900 * 1024 ** 2;
+if (size >= 2 * 1024 ** 3) {
+  for (let i = 0; i * PART < size; i++) {
+    const part = `${out}.part${i + 1}`;
+    await pipeline(createReadStream(out, { start: i * PART, end: Math.min(size, (i + 1) * PART) - 1 }), createWriteStream(part));
+    console.log(`  ${basename(part)}  ${(statSync(part).size / 1024 ** 3).toFixed(2)} GiB`);
+  }
+  console.log('  release assets: the .partN files + the .sha256 (not the whole .tar.gz)');
+}
 if (!values.keep) {
   step(`unregister ${NAME}`);
   await run('wsl.exe', ['--unregister', NAME], { env, quiet: true });

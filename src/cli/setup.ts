@@ -1,11 +1,11 @@
 // `expo-wsl-ios setup`: the one-time machine setup. Every step is idempotent and skipped when done.
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, statSync, type WriteStream } from 'node:fs';
 import { basename, join } from 'node:path';
 import { once } from 'node:events';
 import { pipeline } from 'node:stream/promises';
 import { DISTRO, ROOTFS_URL, distroExists, pymobiledevice3, usbmuxdUp, wslHas, toPosixPath, wslBash, wslInherit } from './env.ts';
-import { run, runInherit, step, succeeds, which } from './proc.ts';
+import { CommandError, run, runInherit, step, succeeds, which } from './proc.ts';
 
 export interface SetupOptions {
   rootfs: string | undefined;
@@ -16,13 +16,21 @@ export interface SetupOptions {
   issuerId: string | undefined;
 }
 
-const stateDir = (): string => join(process.env['LOCALAPPDATA'] ?? join(process.env['USERPROFILE'] ?? '.', 'AppData/Local'), 'expo-wsl-ios');
+/** Downloads and the distro's VHDX. EXPO_WSL_IOS_HOME moves both (e.g. to a bigger drive). */
+const stateDir = (): string => process.env['EXPO_WSL_IOS_HOME']
+  ?? join(process.env['LOCALAPPDATA'] ?? join(process.env['USERPROFILE'] ?? '.', 'AppData/Local'), 'expo-wsl-ios');
 
-async function download(url: string, dest: string): Promise<void> {
+/** The response, or undefined on 404. */
+async function fetchOk(url: string): Promise<Response | undefined> {
   const res = await fetch(url);
+  if (res.status === 404) return undefined;
   if (!res.ok || !res.body) throw new Error(`download ${url}: ${res.status}`);
+  return res;
+}
+
+async function streamTo(res: Response, out: WriteStream, label: string): Promise<void> {
+  if (!res.body) throw new Error(`download ${res.url}: empty body`);
   const total = Number(res.headers.get('content-length') ?? 0);
-  const out = createWriteStream(`${dest}.part`);
   const reader = res.body.getReader();
   let got = 0;
   let last = 0;
@@ -33,11 +41,28 @@ async function download(url: string, dest: string): Promise<void> {
     if (!out.write(value)) await once(out, 'drain');
     if (total && got - last > total / 50) {
       last = got;
-      process.stdout.write(`\r   ${(got / 1e9).toFixed(2)} / ${(total / 1e9).toFixed(2)} GB`);
+      process.stdout.write(`\r   ${label}${(got / 1e9).toFixed(2)} / ${(total / 1e9).toFixed(2)} GB`);
+    }
+  }
+  process.stdout.write('\n');
+}
+
+/** One file, or `<url>.part1..N` when it is over GitHub's 2 GiB release-asset limit; either way one local file. */
+async function download(url: string, dest: string): Promise<void> {
+  const out = createWriteStream(`${dest}.part`);
+  const whole = await fetchOk(url);
+  if (whole) await streamTo(whole, out, '');
+  else {
+    for (let i = 1; ; i++) {
+      const part = await fetchOk(`${url}.part${i}`);
+      if (!part) {
+        if (i === 1) throw new Error(`download ${url}: not found (nor ${url}.part1)`);
+        break;
+      }
+      await streamTo(part, out, `part ${i}: `);
     }
   }
   await new Promise<void>((resolve, reject) => out.end((e?: Error | null) => (e ? reject(e) : resolve())));
-  process.stdout.write('\n');
   renameSync(`${dest}.part`, dest);
 }
 
@@ -87,9 +112,17 @@ async function ensureSdk(o: SetupOptions): Promise<void> {
   if (!existsSync(o.xip)) throw new Error(`no such file: ${o.xip}`);
   console.log('   extracting the SDK from Xcode.xip (several minutes, about 20 GB of temporary space)');
   // --repair is omarchy's SDK-only path: no pacman/yay, so a newer AUR swift-bin can't sneak in
-  // and stop matching the SDK.
-  await wslInherit(['env', `XCODE_XIP=${toPosixPath(o.xip)}`, 'bash', '-c',
-    'export PATH="/usr/lib/swift/usr/bin:$HOME/.local/bin:$PATH"; ulimit -n 65536; cd ~/omarchy-apple-dev && ./install-toolchain.sh --repair']);
+  // and stop matching the SDK. Stale temp dirs from an interrupted attempt are cleared first.
+  const sdkStep = (): Promise<void> => wslInherit(['env', `XCODE_XIP=${toPosixPath(o.xip ?? '')}`, 'bash', '-c',
+    'export PATH="/usr/lib/swift/usr/bin:$HOME/.local/bin:$PATH"; ulimit -n 65536; rm -rf ~/.cache/xtool/.build.* ~/.cache/xtool/pid-*; cd ~/omarchy-apple-dev && ./install-toolchain.sh --repair']);
+  try {
+    await sdkStep();
+  } catch (e) {
+    // `xtool sdk build` has segfaulted once at startup (exit 139) and then passed on the very next try.
+    if (!(e instanceof CommandError) || e.code !== 139) throw e;
+    console.log('   xtool crashed at startup (a known flake); retrying once');
+    await sdkStep();
+  }
 }
 
 async function ensureAscKey(o: SetupOptions): Promise<void> {

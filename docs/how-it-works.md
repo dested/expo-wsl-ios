@@ -53,7 +53,7 @@ Build trees live in `~/build/<app folder>` inside the distro. The `.ipa` is writ
 
 | Where | What |
 | --- | --- |
-| `%LOCALAPPDATA%\expo-wsl-ios` | the downloaded rootfs and the distro's VHDX (`--location` to move it) |
+| `%LOCALAPPDATA%\expo-wsl-ios` | the downloaded rootfs and the distro's VHDX (`EXPO_WSL_IOS_HOME` moves both, `--location` just the VHDX) |
 | `<app>/.expo/wsl-ios` | prep output and the `.ipa` |
 | distro `~/build/<app>` | generated package, `build.log`, `expo2spm-report.json` |
 | distro `~/.cache/expo-wsl-ios` | framework and pod cache, shared across apps |

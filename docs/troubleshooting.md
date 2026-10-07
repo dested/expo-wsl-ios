@@ -2,6 +2,10 @@
 
 Start with `npx expo-wsl-ios doctor`. It checks everything `run` needs and prints a fix for each failure.
 
+## Setup died during "iOS SDK"
+
+Run the same `setup` command again. Every step is idempotent, and the SDK step clears its own leftovers. In testing, the very first SDK extraction crashed once with exit 139 and no message, and the identical rerun went through.
+
 ## A library fails to compile
 
 `run` prints the first `error:` lines. The full log is in the distro:

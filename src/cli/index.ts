@@ -18,7 +18,8 @@ const USAGE = `expo-wsl-ios <command> [options]
            [--no-install]
   prep     Only the Windows-side JS steps (codegen, config, bundle), for debugging
 
-Environment: EXPO_WSL_IOS_CPUS (default 6), EXPO_WSL_IOS_DISTRO, EXPO_WSL_IOS_PMD`;
+Environment: EXPO_WSL_IOS_CPUS (default 6), EXPO_WSL_IOS_HOME (downloads + distro, default %LOCALAPPDATA%\\expo-wsl-ios),
+             EXPO_WSL_IOS_DISTRO, EXPO_WSL_IOS_PMD`;
 
 async function main(): Promise<number> {
   if (process.platform !== 'win32') {
