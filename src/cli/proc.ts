@@ -8,6 +8,10 @@ export interface RunOptions {
   env?: Record<string, string>;
   /** Swallow stderr on success (it is still shown when the command fails). */
   quiet?: boolean;
+  /** runInherit: pass the child's output through this process instead of handing it our handles.
+   *  wsl.exe writes stdout and stderr at separate offsets of a shared file, so `run > log 2>&1`
+   *  would get its stderr written over the top of the log. */
+  relay?: boolean;
 }
 
 export class CommandError extends Error {
@@ -52,8 +56,10 @@ export function runInherit(cmd: string, args: string[], opts: RunOptions = {}): 
     const child = spawn(cmd, args, {
       ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
       env: { ...process.env, ...opts.env },
-      stdio: 'inherit',
+      stdio: opts.relay ? ['inherit', 'pipe', 'pipe'] : 'inherit',
     });
+    child.stdout?.pipe(process.stdout, { end: false });
+    child.stderr?.pipe(process.stderr, { end: false });
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve() : reject(new CommandError([cmd, ...args].join(' '), code, '', ''))));
   });

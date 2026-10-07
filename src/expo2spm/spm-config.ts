@@ -69,7 +69,9 @@ export const spmProduct = z.object({
   sourceOnly: z.boolean().optional(),
   autolinkWhen: z.unknown().optional(),
   customBuild: z.object({ script: z.string(), output: z.string().optional() }).optional(),
-  spmPackages: z.array(z.unknown()).optional(),
+  /** Remote SwiftPM packages. Expo ships each one prebuilt in npm as
+   *  prebuilds/spm-deps/<productName>/<flavor>/<productName>.xcframework. */
+  spmPackages: z.array(z.looseObject({ productName: z.string().optional() })).optional(),
   targets: z.array(spmTarget),
 });
 export type SpmProduct = z.infer<typeof spmProduct>;

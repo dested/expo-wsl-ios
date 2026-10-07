@@ -2,10 +2,10 @@
 // Output goes to <app>/.expo/wsl-ios/prep, which the WSL half reads over /mnt.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { PKG_ROOT, binPath, packageDir } from './env.ts';
-import { run, step } from './proc.ts';
+import { CommandError, run, step } from './proc.ts';
 
 export interface PrepOptions {
   app: string;
@@ -75,14 +75,22 @@ export async function prep(o: PrepOptions): Promise<PrepResult> {
   await node([join(rnDir, 'scripts/generate-codegen-artifacts.js'), '-p', app, '-t', 'ios', '-o', join(dir, 'codegen')]);
 
   step('codegen (libraries that compile their own codegen)');
-  const resolveJson = z.object({ modules: z.array(z.object({ packageName: z.string() })) })
+  const resolveJson = z.object({ modules: z.array(z.object({ packageName: z.string(), pods: z.array(z.object({ podspecDir: z.string() })) })) })
     .parse(JSON.parse(readFileSync(join(dir, 'expo-resolve.json'), 'utf8')));
+  // Up from the podspec first: a local module in <app>/modules has expo-module.config.json but no package.json.
+  const moduleRoot = (pkg: string): string => {
+    const podspecDir = resolveJson.modules.find((m) => m.packageName === pkg)?.pods[0]?.podspecDir;
+    for (let d = podspecDir; d !== undefined && dirname(d) !== d; d = dirname(d)) {
+      if (existsSync(join(d, 'expo-module.config.json')) || existsSync(join(d, 'package.json'))) return d;
+    }
+    return packageDir(pkg, app);
+  };
   const rnJson = z.object({ dependencies: z.record(z.string(), z.unknown()) })
     .parse(JSON.parse(readFileSync(join(dir, 'rn-config.json'), 'utf8')));
   const packages = new Set([...resolveJson.modules.map((m) => m.packageName), ...Object.keys(rnJson.dependencies)]);
   for (const pkg of packages) {
     if (o.exclude.includes(pkg)) continue;
-    const pkgDir = packageDir(pkg, app);
+    const pkgDir = moduleRoot(pkg);
     const configs = [
       join(app, 'expo-wsl-ios/configs', pkg, 'spm.config.json'),
       join(PKG_ROOT, 'configs', pkg, 'spm.config.json'),
@@ -119,7 +127,13 @@ export async function prep(o: PrepOptions): Promise<PrepResult> {
   step('JS bundle + Hermes bytecode (embedded fallback when Metro is not running)');
   const entry = (await node(['-e', `process.stdout.write(require(require.resolve('@expo/config/paths',{paths:[${JSON.stringify(expoDir)}]})).resolveEntryPoint(process.cwd(),{platform:'ios'}))`])).trim();
   await node([expoCli, 'export:embed', '--platform', 'ios', '--dev', 'false', '--minify', 'true', '--entry-file', entry,
-    '--bundle-output', join(dir, 'main.jsbundle'), '--assets-dest', join(dir, 'assets')]);
+    '--bundle-output', join(dir, 'main.jsbundle'), '--assets-dest', join(dir, 'assets')]).catch((e: unknown) => {
+    // Node 22 on Windows can die with an access violation (0xC0000005) while Metro tears down,
+    // after everything is written. Keep the output then; hermesc below rejects a truncated bundle.
+    const crashedAfterWrite = e instanceof CommandError && e.code === 0xc0000005 && e.stdout.includes('Done writing bundle output');
+    if (!crashedAfterWrite) throw e;
+    console.log('   node crashed after Metro finished writing (a Windows Node flake); keeping the bundle');
+  });
   const hermesc = join(packageDir('hermes-compiler', rnDir), 'hermesc/win64-bin/hermesc.exe');
   await run(hermesc, ['-emit-binary', '-O', '-max-diagnostic-width=80', '-w', '-out', join(dir, 'main.hbc'), join(dir, 'main.jsbundle')], { quiet: true });
 

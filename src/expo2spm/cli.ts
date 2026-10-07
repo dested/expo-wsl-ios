@@ -15,6 +15,8 @@ const REPO = resolve(import.meta.dir, '../..');
 
 interface CliArgs {
   app: string;
+  /** The node_modules holding react-native: the app's own, or a workspace root's when hoisted. */
+  nodeModules: string;
   gen: string;
   out: string;
   fw: string;
@@ -38,6 +40,7 @@ function parseArgs(argv: string[]): CliArgs {
   if (flavor !== 'debug' && flavor !== 'release') throw new Error(`--flavor must be debug or release`);
   return {
     app: toPosixPath(need('app')),
+    nodeModules: toPosixPath(get('node-modules') ?? join(need('app'), 'node_modules')),
     gen: toPosixPath(need('gen')),
     out: need('out'),
     fw: need('fw'),
@@ -49,7 +52,7 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 const introspect = z.object({
-  ios: z.object({ infoPlist: plistDict.optional(), entitlements: plistDict.optional() }).optional(),
+  ios: z.object({ infoPlist: plistDict.optional(), entitlements: plistDict.optional(), deploymentTarget: z.string().optional() }).optional(),
 });
 
 /** expo config's Info.plist, with Xcode build settings substituted and Xcode-template leftovers fixed. */
@@ -137,9 +140,20 @@ function report(packages: NativePackage[], products: ResolvedProduct[]): void {
   console.log(`native packages (${packages.length}):\n${rows.join('\n')}`);
 }
 
+/** Dotted version compare: negative, zero or positive. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
 async function main(): Promise<void> {
   const a = parseArgs(process.argv.slice(2));
-  const nm = join(a.app, 'node_modules');
+  const nm = a.nodeModules;
   const warnings: string[] = [];
 
   const expo = expoResolve.parse(await Bun.file(join(a.gen, 'expo-resolve.json')).json());
@@ -157,6 +171,12 @@ async function main(): Promise<void> {
   for (const p of packages) for (const w of p.warnings) if (!handled(p.name, w)) warnings.push(`${p.name}: ${w}`);
   const products = resolveProducts(packages, a.flavor, a.fw);
   report(packages, products);
+  const intro = introspect.parse(await Bun.file(join(a.gen, 'introspect.json')).json());
+  // SwiftPM takes one deployment target per package: the app's own (ios.deploymentTarget), raised to
+  // the highest minimum any linked product declares, where CocoaPods would have refused the install.
+  const deploymentTarget = [intro.ios?.deploymentTarget, ...products.flatMap((p) => p.product.platforms ?? []).map((s) => /^iOS\("([\d.]+)"\)$/.exec(s)?.[1])]
+    .reduce<string>((max, v) => (v !== undefined && compareVersions(v, max) > 0 ? v : max), '16.4');
+  console.log(`deployment target: iOS ${deploymentTarget}`);
 
   mkdirSync(a.out, { recursive: true });
   // Every package's effective config, as a starting point for an override in <app>/expo-wsl-ios/configs.
@@ -184,6 +204,7 @@ async function main(): Promise<void> {
     genDir: a.gen,
     appSources: [join(appSrc, 'AppDelegate.swift'), join(appSrc, 'ExpoModulesProvider.swift')],
     reactNativeVersion: z.object({ version: z.string() }).parse(await Bun.file(join(nm, 'react-native/package.json')).json()).version,
+    deploymentTarget,
   });
   warnings.push(...gen.warnings);
   for (const { pkg, product } of products) {
@@ -211,7 +232,6 @@ async function main(): Promise<void> {
   resources.push(...(await stagePodResources(products, res)));
 
   const metroPort = existsSync(join(a.gen, 'metro-port')) ? (await Bun.file(join(a.gen, 'metro-port')).text()).trim() : '8081';
-  const intro = introspect.parse(await Bun.file(join(a.gen, 'introspect.json')).json());
   writeFileSync(join(a.out, 'Info.plist'), toPlist(infoPlist(intro.ios?.infoPlist ?? {}, a, metroPort, warnings)));
   const ent = intro.ios?.entitlements ?? {};
   if (Object.keys(ent).length > 0) {

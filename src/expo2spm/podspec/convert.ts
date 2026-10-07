@@ -457,6 +457,13 @@ export function translateXcconfig(
       case 'CLANG_CXX_LANGUAGE_STANDARD':
         if (!/^(gnu|c)\+\+20$/.test(joined.trim())) warn(`CLANG_CXX_LANGUAGE_STANDARD=${joined.trim()} (package builds C++20)`);
         break;
+      case 'SWIFT_OPTIMIZATION_LEVEL': {
+        // A pod that pins its optimization (hot loops that crawl at -Onone) keeps it in debug builds.
+        const level = joined.trim();
+        if (flavor === 'common' && /^-O(none|size|unchecked)?$/.test(level)) res.swift.push(level);
+        else warn(`xcconfig ${rawKey}=${level} ignored`);
+        break;
+      }
       case 'FRAMEWORK_SEARCH_PATHS':
         warn(`FRAMEWORK_SEARCH_PATHS ${joined} dropped`);
         break;

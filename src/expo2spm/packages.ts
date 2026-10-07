@@ -1,6 +1,6 @@
 // Collect the app's autolinked native packages and reduce each to an SpmConfig, choosing per
 // product whether it links a prebuilt xcframework or builds from source.
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { convertPodspec } from './podspec/convert.ts';
@@ -32,6 +32,8 @@ export interface ResolvedProduct {
   pkg: NativePackage;
   product: SpmProduct;
   source: ProductSource;
+  /** Prebuilt xcframeworks for the product's spmPackages; they're dynamic, so the app must embed them. */
+  spmDeps: { name: string; xcframework: string }[];
 }
 
 const packageJson = z.object({
@@ -75,7 +77,9 @@ export async function collectPackages(
   for (const [name, podSet] of pods) {
     if (opts.exclude.has(name)) continue;
     const root = packageRoot(name, opts.nodeModules, rn, expo);
-    const pj = packageJson.parse(await Bun.file(join(root, 'package.json')).json());
+    const pjFile = join(root, 'package.json');
+    // A local Expo module (<app>/modules/<name>) has only expo-module.config.json.
+    const pj = existsSync(pjFile) ? packageJson.parse(await Bun.file(pjFile).json()) : { version: '0.0.0', codegenConfig: undefined };
     const base = { name, version: pj.version, root, pods: [...podSet], codegen: pj.codegenConfig !== undefined };
     const override = opts.overridesDirs.map((d) => join(d, name, 'spm.config.json')).find((f) => existsSync(f)) ?? '';
     const own = join(root, 'spm.config.json');
@@ -132,17 +136,20 @@ async function addRemotePods(out: NativePackage[], opts: CollectOptions): Promis
   }
 }
 
-/** node_modules/<name>, else where autolinking found it (hoisted or linked workspaces). */
+/** node_modules/<name>, else where autolinking found it (hoisted or linked workspaces, local modules). */
 function packageRoot(name: string, nodeModules: string, rn: RnConfig, expo: ExpoResolve): string {
+  // Real paths: a workspace package is a link in node_modules, but autolinking reports its podspec
+  // under the real path, and the two have to agree for podspec-relative paths to stay inside the package.
   const direct = join(nodeModules, name);
-  if (existsSync(join(direct, 'package.json'))) return direct;
+  if (existsSync(join(direct, 'package.json'))) return realpathSync(direct);
   const rnRoot = rn.dependencies[name]?.root;
-  if (rnRoot) return toPosixPath(rnRoot);
+  if (rnRoot) return realpathSync(toPosixPath(rnRoot));
   const podDir = expo.modules.find((m) => m.packageName === name)?.pods[0]?.podspecDir;
   if (podDir) {
     let dir = toPosixPath(podDir);
-    while (dir.length > 1 && !existsSync(join(dir, 'package.json'))) dir = dirname(dir);
-    if (existsSync(join(dir, 'package.json'))) return dir;
+    const isRoot = (d: string): boolean => existsSync(join(d, 'package.json')) || existsSync(join(d, 'expo-module.config.json'));
+    while (dir.length > 1 && !isRoot(dir)) dir = dirname(dir);
+    if (isRoot(dir)) return dir;
   }
   return direct;
 }
@@ -181,13 +188,21 @@ export function resolveProducts(packages: NativePackage[], flavor: Flavor, frame
       const when = autolinkWhenPod(product.autolinkWhen);
       const linked = pkg.pods.includes(pod) || (product.sourceOnly === true && when !== undefined && allPods.has(when));
       if (!linked) continue;
+      const spmDeps = (product.spmPackages ?? []).flatMap(({ productName: name }) => {
+        if (name === undefined) return [];
+        const xcframework = join(pkg.root, 'prebuilds/spm-deps', name, flavor, `${name}.xcframework`);
+        if (!existsSync(xcframework)) {
+          throw new Error(`${product.name}: needs ${name}, expected prebuilt at ${xcframework} (without it the app dies at launch with dyld "Library not loaded")`);
+        }
+        return [{ name, xcframework }];
+      });
       const tarball = join(pkg.root, 'prebuilds/output', flavor, 'xcframeworks', `${product.name}.tar.gz`);
       const staged = join(frameworksDir, `${product.name}.xcframework`);
       if (product.customBuild || existsSync(tarball)) {
         if (!existsSync(staged)) throw new Error(`${product.name}: expected a staged xcframework at ${staged}`);
-        out.push({ pkg, product, source: { kind: 'binary', xcframework: staged } });
+        out.push({ pkg, product, source: { kind: 'binary', xcframework: staged }, spmDeps });
       } else {
-        out.push({ pkg, product, source: { kind: 'source' } });
+        out.push({ pkg, product, source: { kind: 'source' }, spmDeps });
       }
     }
   }

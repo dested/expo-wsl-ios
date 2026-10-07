@@ -2,7 +2,7 @@
 # Version-keyed prebuilt framework cache: React Native core, ReactNativeDependencies and Hermes
 # (Maven), Expo's npm-shipped xcframeworks, and ExpoModulesJSI (built here on Linux). Each piece
 # is cached once per version under $EXPO_WSL_IOS_CACHE; <dest> becomes a directory of symlinks to it.
-# usage: frameworks.sh <app node_modules> <dest> [debug|release]
+# usage: frameworks.sh <node_modules with react-native> <dest> [debug|release]
 set -euo pipefail
 export PATH="/usr/lib/swift/usr/bin:$HOME/.local/bin:$PATH"
 nm=$1; dest=$2; flavor=${3:-debug}

@@ -40,7 +40,7 @@ export function wsl(cmd: string[], quiet = true): Promise<string> {
 }
 
 export function wslInherit(cmd: string[]): Promise<void> {
-  return runInherit('wsl.exe', capped(cmd), { env: wslEnv });
+  return runInherit('wsl.exe', capped(cmd), { env: wslEnv, relay: true });
 }
 
 /** `bash -c` in the distro with the toolchain on PATH. */
