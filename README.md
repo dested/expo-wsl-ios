@@ -10,6 +10,8 @@ npx expo-wsl-ios setup --xip Xcode_27.xip --asc-key AuthKey_ABC123DEF4.p8 --issu
 npx expo-wsl-ios run
 ```
 
+First time? [Setup, step by step](#setup-step-by-step) shows where each of those files comes from.
+
 ## Status
 
 Early. It has built and run two apps: a production app with 29 native modules (expo-router, react-native-screens, reanimated 4, gesture-handler, svg, in-app purchases) and a blank SDK 57 app. Both ran on one PC and one iPhone (iOS 27.2). Cold build: about 3 minutes on a desktop i9 with all cores, longer on the default 6. Install: 5 seconds.
@@ -53,14 +55,43 @@ Early. It has built and run two apps: a production app with 29 native modules (e
 - About 12 GB of disk, plus 20 GB of temporary space during setup
 - Time: a cold build of the 29-module app takes about 3 minutes with all 16 cores and 6–8 minutes on the default 6. Builds aren't cached across `run`s yet, beyond what SwiftPM reuses.
 
-## Requirements
+## Setup, step by step
 
-- Windows 11 with WSL 2. About 12 GB of disk once set up, plus about 20 GB of temporary space during setup.
-- Expo SDK 57 or newer.
-- A paid Apple Developer Program membership, plus an App Store Connect API key with the Admin role (App Store Connect → Users and Access → Integrations → Team Keys). The key creates a development certificate, registers your iPhone and makes provisioning profiles.
-- `Xcode_27.xip` from [developer.apple.com/download/all](https://developer.apple.com/download/all/?q=Xcode). Setup extracts the iOS SDK from it; Xcode itself never runs.
-- [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store (the USB driver), and [uv](https://docs.astral.sh/uv/) (`winget install astral-sh.uv`) for pymobiledevice3.
-- An iPhone with Developer Mode on (Settings → Privacy & Security; it appears after the first install attempt).
+This is a one-time setup, about 30 minutes plus Apple's paperwork. You'll end up with three things: a `.xip` file, a `.p8` file and an issuer id. You don't need your iPhone's UDID, because `run` finds the phone over USB.
+
+**1. Join the Apple Developer Program.** Sign up at [developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/). It costs $99/year and approval can take a day.
+
+**2. Make an App Store Connect API key (the `.p8`).**
+1. Go to [App Store Connect → Users and Access → Integrations → App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api).
+2. The first time, click **Request Access**. Only the account holder can do this, and it's approved right away.
+3. Under **Team Keys**, click **+** (Generate API Key). Name it `expo-wsl-ios` and set Access to **Admin**.
+4. Click **Download API Key**. You get `AuthKey_XXXXXXXXXX.p8`, and Apple only lets you download it once, so keep it somewhere safe and outside your repo.
+5. Copy the **Issuer ID** from the top of that page. It looks like `69a6de7f-1234-47e3-e053-5b8c7c11a4d1`.
+
+**3. Download Xcode 27 (the `.xip`).**
+1. Go to [developer.apple.com/download/all](https://developer.apple.com/download/all/?q=Xcode%2027) and sign in with your Apple ID.
+2. Download **Xcode 27** as a `.xip` file (about 2 GB). It must be 27; other versions won't match the Swift in the toolchain.
+3. Don't unpack it. Setup pulls the iOS SDK out of it, and you can delete it afterwards.
+
+**4. Install the Windows bits.**
+- WSL: in an **admin** PowerShell, run `wsl --install --no-distribution` and reboot. Skip this if `wsl --version` already works.
+- [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store. This is the iPhone USB driver. Open it once.
+- uv: `winget install astral-sh.uv`, then open a new terminal. Setup uses it to install pymobiledevice3.
+
+**5. Run setup** from your Expo project (Expo SDK 57 or newer), with your own paths and issuer id:
+
+```sh
+npm i -D expo-wsl-ios
+npx expo-wsl-ios setup --xip C:\Users\you\Downloads\Xcode_27.xip --asc-key C:\Users\you\Downloads\AuthKey_XXXXXXXXXX.p8 --issuer-id 69a6de7f-1234-47e3-e053-5b8c7c11a4d1
+```
+
+Setup downloads the prebuilt Linux distro, extracts the SDK and stores your key inside the distro. It takes about 15 minutes and uses about 12 GB of disk, plus 20 GB of temporary space while it runs.
+
+**6. Plug in your iPhone.** Use a USB cable, unlock the phone, and tap **Trust This Computer**. Then run `npx expo-wsl-ios doctor`, which should show a ✓ on every line.
+
+**7. Build.** Run `npx expo-wsl-ios run`. The first install makes **Developer Mode** appear on the phone: turn it on under Settings → Privacy & Security → Developer Mode, let the phone restart, then tap the app icon.
+
+If you have no `ios.bundleIdentifier` in `app.json`, `run` picks `com.<your windows user>.<slug>`. Set your own to keep it stable. With more than one iPhone plugged in, `run` lists them and asks for `--udid`.
 
 ## Commands
 

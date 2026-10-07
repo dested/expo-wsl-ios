@@ -18,6 +18,8 @@ You're helping someone build their Expo app for a real iPhone from Windows. Read
 
 ## Setup (once per machine)
 
+The README's "Setup, step by step" section has the click-by-click for the manual parts (API key, issuer id, Xcode download). Walk the user through it; don't guess at Apple's UI.
+
 1. `npm i -D expo-wsl-ios` in the project (Expo SDK 57+).
 2. `npx expo-wsl-ios doctor` shows what's missing.
 3. `npx expo-wsl-ios setup --xip <path to Xcode_27.xip> --asc-key <path to AuthKey_XXXX.p8> --issuer-id <issuer uuid>`
