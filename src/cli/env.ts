@@ -1,6 +1,5 @@
 // Where things live: the npm package, the WSL distro, per-project state, device tooling.
-import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, realpathSync } from 'node:fs';
 import { connect } from 'node:net';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,8 +93,16 @@ export async function usbDevices(pmd: string): Promise<Device[]> {
 }
 
 /** Resolve a package's directory the way Node would from `from` (handles hoisting). */
+/** Node's node_modules lookup for a package's folder. Not require.resolve('<name>/package.json'):
+ *  packages with an `exports` map that leaves out ./package.json (expo-symbols) reject that. */
 export function packageDir(name: string, from: string): string {
-  return dirname(createRequire(join(from, 'package.json')).resolve(`${name}/package.json`));
+  for (let dir = realpathSync(from); ; ) {
+    const candidate = join(dir, 'node_modules', name);
+    if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error(`cannot find package ${name} from ${from} (is node_modules installed?)`);
+    dir = parent;
+  }
 }
 
 const binField = z.object({ bin: z.union([z.string(), z.record(z.string(), z.string())]).optional() });
