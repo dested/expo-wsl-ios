@@ -1,0 +1,14 @@
+# WSL distro VHDX, Xcode download, signing material
+.wsl/
+.secrets/
+.cache/
+*.xip
+.venv-win/
+out/
+
+# fixtures
+node_modules/
+.expo/
+
+# build output
+dist/

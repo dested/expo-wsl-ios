@@ -1,0 +1,41 @@
+{
+  "name": "expo-wsl-ios",
+  "version": "0.1.0",
+  "description": "Build Expo apps for a real iPhone on Windows. Native compile in WSL, no Mac.",
+  "license": "MIT",
+  "author": "Sal Aiello",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dested/expo-wsl-ios.git"
+  },
+  "homepage": "https://github.com/dested/expo-wsl-ios#readme",
+  "keywords": ["expo", "react-native", "ios", "iphone", "wsl", "windows", "swiftpm", "xtool"],
+  "type": "module",
+  "bin": {
+    "expo-wsl-ios": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src/expo2spm",
+    "!src/expo2spm/**/*.test.ts",
+    "scripts/*.sh",
+    "docs",
+    "AGENTS.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "bun build src/cli/index.ts --target node --packages external --outfile dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src",
+    "prepublishOnly": "bun run typecheck && bun test src && bun run build"
+  },
+  "dependencies": {
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "~6.0.3"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Hello WSL",
+    "slug": "hello-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "bundleIdentifier": "com.dested.wslosx.helloexpo" }
+  }
+}
