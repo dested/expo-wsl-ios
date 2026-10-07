@@ -1,6 +1,12 @@
 # Expo iOS builds from WSL: viability and plan
 
-Status: active (package, docs and blog draft done; rootfs build scripted, waiting on Sal's OK to run it in WSL)
+Status: active (packaged CLI verified end to end on kidsize25 2026-10-07 15:38: setup, doctor, run → installed in 480 s on 6 vCPUs; rootfs build started 15:50, resumable with `bun rootfs/build.ts`; GitHub repo creation blocked by the permission classifier, Sal runs it)
+
+Next session, in order: (1) if `out/expo-wsl-ios-rootfs-1.tar.gz` is missing, rerun `bun rootfs/build.ts`
+(resumes); check size < 2 GiB. (2) Sal: `gh repo create dested/expo-wsl-ios --public --source . --remote origin --push`.
+(3) Ask, then `gh release create rootfs-1 out/expo-wsl-ios-rootfs-1.tar.gz{,.sha256}` (notes draft in the
+session scratchpad: "the WSL distro that setup imports; nothing from Apple in it"). (4) Test `setup` from
+the release on a fresh import. (5) Ask, then `npm publish`. (6) Sal reviews the blog draft (draft: true).
 
 ## Verdict
 
