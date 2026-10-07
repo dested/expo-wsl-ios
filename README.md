@@ -12,7 +12,7 @@ npx expo-wsl-ios run
 
 ## Status
 
-Early, and honest about it. It builds and runs a 29-native-module production app (expo-router, react-native-screens, reanimated 4, gesture-handler, svg, in-app purchases) and a blank SDK 57 app. Cold build: about 3 minutes on a desktop i9 with all cores. Install: 5 seconds.
+Early. It has built and run two apps: a production app with 29 native modules (expo-router, react-native-screens, reanimated 4, gesture-handler, svg, in-app purchases) and a blank SDK 57 app. Both ran on one PC and one iPhone (iOS 27.2). Cold build: about 3 minutes on a desktop i9 with all cores, longer on the default 6. Install: 5 seconds.
 
 | Works | Not yet |
 | --- | --- |
@@ -22,7 +22,36 @@ Early, and honest about it. It builds and runs a 29-native-module production app
 | CocoaPods-only libraries: podspecs are converted, trunk pods fetched | Release and TestFlight builds |
 | Signing through the App Store Connect API (no Apple ID login, no 7-day profiles) | Launching from the CLI (tap the icon) |
 
-There's no iOS Simulator on Windows, and there never will be. This is device-only.
+## Gaps: read this before you start
+
+**What you'll hit on day one**
+
+- **No live reload.** Every change, JS included, means a full `run`: minutes, not seconds.
+- **No debugger.** Without Metro there's no React DevTools and no `console.log` in your terminal, and there's no lldb. Crash logs come from `pymobiledevice3 syslog live`.
+- **No app icon or splash screen.** You get the default icon and a blank launch screen.
+- **There's no Xcode project.**
+  - Config plugins that only set Info.plist keys or entitlements work.
+  - Plugins that edit the Xcode project, the Podfile, the AppDelegate, or add files under `ios/` do nothing.
+  - Native code in a committed `ios/` folder isn't compiled.
+  - To customize the AppDelegate, replace it with `expo-wsl-ios/AppDelegate.swift`.
+- **The long tail of libraries.** Libraries without an Expo SwiftPM config go through a podspec converter. Popular ones work; an obscure native library may need a small override (see [troubleshooting](docs/troubleshooting.md)).
+
+**Not supported (yet or ever)**
+
+- Release, TestFlight and App Store builds
+- Push, iCloud, app groups and other entitlements beyond the basics
+- expo-dev-client's launcher UI, DOM components (`@expo/dom-webview`) and LogBox, which are excluded by default
+- Launching from the CLI (tap the icon) and wireless install (USB only)
+- The iOS Simulator (macOS only, so never)
+- Expo SDK 56 and older, Windows on ARM, Yarn Plug'n'Play
+- Local Expo modules in `modules/` and pnpm layouts are untested
+
+**What it costs**
+
+- A paid Apple Developer Program membership ($99/year)
+- Downloading Xcode 27 by hand (2 GB, Apple ID sign-in). It has to be 27, to match the bundled Swift 6.4
+- About 12 GB of disk, plus 20 GB of temporary space during setup
+- Time: a cold build of the 29-module app takes about 3 minutes with all 16 cores and 6–8 minutes on the default 6. Builds aren't cached across `run`s yet, beyond what SwiftPM reuses.
 
 ## Requirements
 

@@ -51,8 +51,14 @@ More fixes are in `docs/troubleshooting.md`. How the pipeline works is in `docs/
 
 ## Known limits (don't try to fix these from the app side)
 
+- Live reload from Metro is not finished. The app runs the JS bundle embedded at build time. After any change, JS included, `run` again.
+- No debugger. Without Metro there's no `console.log` in the terminal. For crashes, use `pymobiledevice3 syslog live`, filtered by the product name.
 - No app icon or splash screen yet; the launch screen is blank.
-- Live reload from Metro is not finished. The app runs the JS bundle embedded at build time. After a JS change, `run` again.
+- There's no Xcode project.
+  - Config plugins that set Info.plist keys or entitlements apply.
+  - Plugins that edit the Xcode project, Podfile or AppDelegate don't apply.
+  - Native code in a committed `ios/` folder isn't compiled.
+  - A custom AppDelegate goes in `expo-wsl-ios/AppDelegate.swift`.
 - Entitlements (push, iCloud, app groups) aren't provisioned.
 - Debug builds only, no TestFlight.
 - Device only; there's no simulator on Windows.
