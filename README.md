@@ -93,6 +93,135 @@ Setup downloads the prebuilt Linux distro, extracts the SDK and stores your key 
 
 If you have no `ios.bundleIdentifier` in `app.json`, `run` picks `com.<your windows user>.<slug>`. Set your own to keep it stable. With more than one iPhone plugged in, `run` lists them and asks for `--udid`.
 
+## From create-expo-app to your phone
+
+The whole trip in PowerShell, from nothing to an app on the phone. Steps 3 and 4 happen only once per PC.
+
+```powershell
+# 1. A new app (or cd into an existing SDK 57+ app)
+npx create-expo-app@latest myapp
+cd myapp
+
+# 2. Add expo-wsl-ios to the project
+npm i -D expo-wsl-ios
+
+# 3. One-time machine setup (see "Setup, step by step" for where these three come from)
+npx expo-wsl-ios setup `
+  --xip $HOME\Downloads\Xcode_27.xip `
+  --asc-key $HOME\Downloads\AuthKey_ABC123DEF4.p8 `
+  --issuer-id 69a6de7f-1234-47e3-e053-5b8c7c11a4d1
+
+# 4. Plug in the iPhone, unlock it, tap Trust, then check everything
+npx expo-wsl-ios doctor
+
+# 5. Build, sign, install
+npx expo-wsl-ios run
+```
+
+This is what step 5 printed for a fresh `create-expo-app` (SDK 57 default template, 24 native modules). It was cold, on the default 6 vCPUs, on an i9-14900K, trimmed:
+
+```
+   device: Dstd (00008150-001C58D40280401C)
+== autolinking
+== codegen (app)
+== app config
+== JS bundle + Hermes bytecode (embedded fallback when Metro is not running)
+== generate + build + sign in WSL
+== frameworks ==
+== expo2spm ==
+native packages (24):
+  expo                             podspec       Expo
+  expo-router                      podspec       ExpoRouter
+  react-native-reanimated          spm-external  RNReanimated
+  react-native-screens             spm-external  RNScreens
+  ...
+== xtool dev build (log: /home/you/build/myapp/build.log) ==
+   built in 267 s
+== provision com.you.myapp for 00008150-001C58D40280401C ==
+signature verifies
+ipa: .expo/wsl-ios/Myapp.ipa (26M)
+== install
+
+Installed myapp in 495 s. Tap it on the phone to launch.
+```
+
+Then tap the app on the phone. To change something, edit `src/app/index.tsx` and run `npx expo-wsl-ios run` again. There's no live reload yet, so every change is a rebuild. Reruns reuse the framework cache and SwiftPM's incremental build.
+
+## Examples
+
+```powershell
+# What's missing on this machine, with the fix for each item
+npx expo-wsl-ios doctor
+
+# Build and install the app in the current folder
+npx expo-wsl-ios run
+
+# Build only. The .ipa lands in .expo\wsl-ios\
+npx expo-wsl-ios run --no-install
+
+# Several phones plugged in? Pick one (run lists the ids)
+npx expo-wsl-ios run --udid 00008150-001C58D40280401C
+
+# A different bundle id without touching app.json
+npx expo-wsl-ios run --bundle-id com.you.myapp.dev
+
+# Leave out native libraries that won't build yet
+npx expo-wsl-ios run --exclude react-native-foo,react-native-bar
+
+# Go faster: give the build 12 vCPUs instead of 6
+$env:EXPO_WSL_IOS_CPUS = 12; npx expo-wsl-ios run
+
+# Only the Windows-side JS work (autolinking, codegen, config, bundle)
+npx expo-wsl-ios prep
+
+# Read the full native build log, or see which route each library took
+wsl -d expo-wsl-ios -- less ~/build/myapp/build.log
+wsl -d expo-wsl-ios -- cat ~/build/myapp/expo2spm-report.json
+
+# Start an override from the config a library actually used
+wsl -d expo-wsl-ios -- cat ~/build/myapp/configs/react-native-foo/spm.config.json
+
+# Crash on launch? Watch the phone's log
+pymobiledevice3 syslog live | Select-String Myapp
+
+# Give WSL's memory back to Windows after a build session
+wsl --shutdown
+
+# Swap in a new App Store Connect key
+npx expo-wsl-ios setup --asc-key $HOME\Downloads\AuthKey_NEWKEY1234.p8 --issuer-id <uuid>
+
+# Remove everything
+wsl --unregister expo-wsl-ios
+Remove-Item -Recurse -Force $env:LOCALAPPDATA\expo-wsl-ios
+```
+
+## Running it from source
+
+Until it's on npm, or to hack on it, you need git, [bun](https://bun.sh) and Node 20+:
+
+```powershell
+git clone https://github.com/dested/expo-wsl-ios
+cd expo-wsl-ios
+bun install
+bun run build                      # the Windows CLI: dist\cli.js
+npm pack                           # expo-wsl-ios-0.1.0.tgz, exactly what npm would ship
+
+cd ..\myapp
+npm i -D ..\expo-wsl-ios\expo-wsl-ios-0.1.0.tgz
+npx expo-wsl-ios doctor
+```
+
+To hack on it, link the clone instead with `npm i -D ..\expo-wsl-ios`. Edits to the generator and the shell scripts apply on the next `run`; edits to `src/cli` need `bun run build` first.
+
+Until the prebuilt distro is published as a release, build it yourself. It takes about 45 minutes on 6 vCPUs and makes `out\expo-wsl-ios-rootfs-1.tar.gz`:
+
+```powershell
+cd expo-wsl-ios
+bun rootfs/build.ts
+cd ..\myapp
+npx expo-wsl-ios setup --rootfs ..\expo-wsl-ios\out\expo-wsl-ios-rootfs-1.tar.gz --xip ... --asc-key ... --issuer-id ...
+```
+
 ## Commands
 
 | Command | What it does |
