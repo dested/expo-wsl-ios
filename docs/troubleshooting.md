@@ -43,6 +43,8 @@ If your override fixes a popular library, please open a PR that adds it to this 
 
 Drop an `AppDelegate.swift` in `<app>/expo-wsl-ios/AppDelegate.swift`. By default the generator uses the one from Expo's own template.
 
+Config plugins that rewrite AppDelegate (`withAppDelegate`) don't run, but their Info.plist changes do. A plugin that adopts the UIScene life cycle adds `UIApplicationSceneManifest` with `EXExpoAppSceneDelegate`, while the template AppDelegate still creates its own window. Apply the plugin's edit to the template once and save the result here: make `AppDelegate` conform to `ExpoReactNativeFactoryProvider` and delete the block that creates the window and calls `startReactNative`.
+
 ## The app installed but won't open
 
 - **"Untrusted Developer" / nothing happens.** Turn on Developer Mode (Settings → Privacy & Security → Developer Mode). It only appears after the first install attempt, and the phone restarts.

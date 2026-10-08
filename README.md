@@ -14,7 +14,7 @@ First time? [Setup, step by step](#setup-step-by-step) shows where each of those
 
 ## Status
 
-Early. It has built and run two apps: a production app with 29 native modules (expo-router, react-native-screens, reanimated 4, gesture-handler, svg, in-app purchases) and a blank SDK 57 app. Both ran on one PC and one iPhone (iOS 27.2). Cold build: about 3 minutes on a desktop i9 with all cores, longer on the default 6. Install: 5 seconds.
+Early. It has built and run two apps on one PC and one iPhone (iOS 27.2): a production app with 29 native modules (expo-router, react-native-screens, reanimated 4, gesture-handler, svg, in-app purchases) and a blank SDK 57 app. It has also built and signed a third: a Bun-workspace monorepo app with 43 native packages, including Skia, local Expo modules, and its own Swift modules using Metal, CoreML and ARKit. Cold build: about 3 minutes on a desktop i9 with all cores, longer on the default 6. Install: 5 seconds.
 
 | Works | Not yet |
 | --- | --- |
@@ -22,6 +22,7 @@ Early. It has built and run two apps: a production app with 29 native modules (e
 | Expo modules, RN new architecture, Hermes | Live reload from Metro (the app runs the JS bundle embedded at build time) |
 | reanimated, worklets, gesture-handler, svg, screens, expo-router | Push, iCloud, app groups and other entitlements |
 | CocoaPods-only libraries: podspecs are converted, trunk pods fetched | Release and TestFlight builds |
+| Monorepos (hoisted node_modules), local Expo modules, Skia | Config plugins that patch AppDelegate (see below) |
 | Signing through the App Store Connect API (no Apple ID login, no 7-day profiles) | Launching from the CLI (tap the icon) |
 
 ## Gaps: read this before you start
@@ -35,7 +36,7 @@ Early. It has built and run two apps: a production app with 29 native modules (e
   - Config plugins that only set Info.plist keys or entitlements work.
   - Plugins that edit the Xcode project, the Podfile, the AppDelegate, or add files under `ios/` do nothing.
   - Native code in a committed `ios/` folder isn't compiled.
-  - To customize the AppDelegate, replace it with `expo-wsl-ios/AppDelegate.swift`.
+  - To customize the AppDelegate, replace it with `expo-wsl-ios/AppDelegate.swift`. That includes a plugin that moves the app to the UIScene life cycle: its Info.plist half applies, so ship the matching AppDelegate.
 - **The long tail of libraries.** Libraries without an Expo SwiftPM config go through a podspec converter. Popular ones work; an obscure native library may need a small override (see [troubleshooting](docs/troubleshooting.md)).
 
 **Not supported (yet or ever)**
@@ -46,7 +47,7 @@ Early. It has built and run two apps: a production app with 29 native modules (e
 - Launching from the CLI (tap the icon) and wireless install (USB only)
 - The iOS Simulator (macOS only, so never)
 - Expo SDK 56 and older, Windows on ARM, Yarn Plug'n'Play
-- Local Expo modules in `modules/` and pnpm layouts are untested
+- pnpm's symlinked layout is untested (hoisted workspaces work; tested with Bun)
 
 **What it costs**
 
