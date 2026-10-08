@@ -1,12 +1,22 @@
 # Expo iOS builds from WSL: viability and plan
 
-Status: active (packaged CLI verified end to end on kidsize25 2026-10-07 15:38: setup, doctor, run → installed in 480 s on 6 vCPUs; rootfs build started 15:50, resumable with `bun rootfs/build.ts`; GitHub repo creation blocked by the permission classifier, Sal runs it)
+Status: active (released 2026-10-07: repo public at github.com/dested/expo-wsl-ios, rootfs-1 GitHub
+release live as two parts + sha256, fresh-distro setup from the parts passed. Installs come from GitHub,
+`npm i -D github:dested/expo-wsl-ios`; Sal decided not to publish to npm, so dist/cli.js is committed and
+src/cli/dist.test.ts keeps it in sync.)
 
-Next session, in order: (1) if `out/expo-wsl-ios-rootfs-1.tar.gz` is missing, rerun `bun rootfs/build.ts`
-(resumes); check size < 2 GiB. (2) Sal: `gh repo create dested/expo-wsl-ios --public --source . --remote origin --push`.
-(3) Ask, then `gh release create rootfs-1 out/expo-wsl-ios-rootfs-1.tar.gz{,.sha256}` (notes draft in the
-session scratchpad: "the WSL distro that setup imports; nothing from Apple in it"). (4) Test `setup` from
-the release on a fresh import. (5) Ask, then `npm publish`. (6) Sal reviews the blog draft (draft: true).
+State at 17:10:
+- create-expo-app template: crashed at launch (SDWebImage spm-deps not embedded). Fixed, plus a post-build
+  check that every @rpath framework is embedded. Reinstalled; waiting on Sal to tap it to confirm.
+- pickleball (G:/code/pickleball/apps/mobile, Bun monorepo, 43 native packages, Skia, vision Metal/CoreML,
+  ARKit): builds and signs in 262 s as com.dested.dink.wsl (APP_VARIANT=development, --port 7413). Needs
+  apps/mobile/expo-wsl-ios/AppDelegate.swift (scene life cycle; untracked there, another session has
+  uncommitted work in that tree). Not yet installed: phone was off USB.
+- Next: Sal taps Myapp; install Dink.ipa when the phone is back (`pymobiledevice3 apps install
+  G:/code/pickleball/apps/mobile/.expo/wsl-ios/Dink.ipa`), launch-test it; blog review, then publish
+  (draft in G:/code/casualdeveloper, uncommitted). Unregister expo-wsl-ios-fresh, stop serve-parts.
+- Known gaps found on pickleball: withAppDelegate plugins don't run; expo-updates' resource script
+  phase is skipped; xtool links with -all_load (worked around for multi-archive products only).
 
 ## Verdict
 
