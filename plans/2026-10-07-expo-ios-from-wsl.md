@@ -13,8 +13,9 @@ State at 17:10:
   apps/mobile/expo-wsl-ios/AppDelegate.swift (scene life cycle; untracked there, another session has
   uncommitted work in that tree). Not yet installed: phone was off USB.
 - Next: Sal taps Myapp; install Dink.ipa when the phone is back (`pymobiledevice3 apps install
-  G:/code/pickleball/apps/mobile/.expo/wsl-ios/Dink.ipa`), launch-test it; blog review, then publish
-  (draft in G:/code/casualdeveloper, uncommitted). Unregister expo-wsl-ios-fresh, stop serve-parts.
+  G:/code/pickleball/apps/mobile/.expo/wsl-ios/Dink.ipa`), launch-test it.
+- Done: blog published (casualdeveloper c93464f, https://casualdeveloper.net/post/2026-10-07-expo-ios-from-windows/);
+  expo-wsl-ios-fresh unregistered and .wsl/home-test removed; serve-parts stopped.
 - Known gaps found on pickleball: withAppDelegate plugins don't run; expo-updates' resource script
   phase is skipped; xtool links with -all_load (worked around for multi-archive products only).
 
