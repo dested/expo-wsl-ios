@@ -6,6 +6,7 @@
 import { existsSync, linkSync, mkdirSync, readdirSync, rmSync, symlinkSync, copyFileSync, writeFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { Glob } from 'bun';
+import { dedupeArchives } from './archives.ts';
 import { resolveCompilerFlags, type Flavor, type SpmTarget } from './spm-config.ts';
 import type { ResolvedProduct } from './packages.ts';
 
@@ -137,9 +138,12 @@ export async function generatePackage(products: ResolvedProduct[], opts: Generat
     const rnMinor = opts.reactNativeVersion.split('.')[1] ?? '0';
     const vars = (f: string): string => f.replaceAll('${PACKAGE_VERSION}', pkg.version).replaceAll('${REACT_NATIVE_MINOR_VERSION}', rnMinor);
 
+    // Several static archives in one product (Skia's) can share members; see dedupeArchives.
+    const frameworks = product.targets.filter((t) => t.type === 'framework').map((t) => ({ name: t.name, xcframework: join(mirror, t.path) }));
+    const deduped = frameworks.length > 1 ? await dedupeArchives(frameworks, join(outDir, '.dedup', `${pkg.name}@${pkg.version}`)) : new Map<string, string>();
     for (const t of product.targets) {
       if (t.type === 'framework') {
-        binary(t.name, join(mirror, t.path));
+        binary(t.name, deduped.get(t.name) ?? join(mirror, t.path));
         continue;
       }
       const remap = (p: string): string => {
