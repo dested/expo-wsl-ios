@@ -1,7 +1,7 @@
 // expo2spm: Windows-side prep output + the app's node_modules -> one SwiftPM/xtool package (runs in WSL).
 //   bun src/expo2spm/cli.ts --app <dir> --gen <dir> --out <dir> --fw <dir> --name <AppName>
 //                           --bundle-id <id> [--exclude a,b] [--flavor debug|release]
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { Glob } from 'bun';
 import { z } from 'zod';
@@ -86,6 +86,41 @@ async function extractTemplateAppDelegate(nm: string, dest: string): Promise<voi
   const [src, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
   if (code !== 0) throw new Error(`AppDelegate from expo/template.tgz: ${err}`);
   writeFileSync(dest, src);
+}
+
+/**
+ * The prebuilt React framework has RCT_METRO_PORT compiled as 8081. Its
+ * inspector helper checks the process environment before falling back to that
+ * constant. React Native's bundle URL provider also needs its jsLocation set
+ * from the bundled host:port file. Do both before the Expo factory starts RN.
+ */
+function configureMetroPortInAppDelegate(path: string): void {
+  let source = readFileSync(path, 'utf8');
+  if (source.includes('expoWslConfigureMetroPort()')) return;
+
+  const method = /func\s+application\s*\([\s\S]*?didFinishLaunchingWithOptions[\s\S]*?\)\s*->\s*Bool\s*\{/m.exec(source);
+  if (!method) throw new Error('AppDelegate must implement application(_:didFinishLaunchingWithOptions:) to configure the Metro port');
+  const bodyStart = source.indexOf('{', method.index);
+  source = `${source.slice(0, bodyStart + 1)}\n    // Keep React Native's inspector websocket on the configured Metro port.\n    expoWslConfigureMetroPort()${source.slice(bodyStart + 1)}`;
+
+  if (!/^import\s+Darwin\s*$/m.test(source)) source = `import Darwin\n${source}`;
+  source += `
+
+// RCT_METRO_PORT is a compile-time default in the prebuilt React framework.
+// RCTInspectorDevServerHelper also honors this runtime environment override.
+private func expoWslConfigureMetroPort() {
+  guard
+    let ipURL = Bundle.main.url(forResource: "ip", withExtension: "txt"),
+    let address = try? String(contentsOf: ipURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+    let portPart = address.split(separator: ":").last,
+    let port = Int(portPart), (1...65535).contains(port)
+  else { return }
+
+  RCTBundleURLProvider.sharedSettings().jsLocation = address
+  setenv("RCT_METRO_PORT", String(port), 1)
+}
+`;
+  writeFileSync(path, source);
 }
 
 /** CocoaPods resource_bundles -> <name>.bundle directories at the .app root. */
@@ -194,6 +229,7 @@ async function main(): Promise<void> {
   const custom = join(a.app, 'expo-wsl-ios/AppDelegate.swift');
   if (existsSync(custom)) cpSync(custom, join(appSrc, 'AppDelegate.swift'));
   else await extractTemplateAppDelegate(nm, join(appSrc, 'AppDelegate.swift'));
+  configureMetroPortInAppDelegate(join(appSrc, 'AppDelegate.swift'));
   cpSync(join(a.gen, 'ExpoModulesProvider.swift'), join(appSrc, 'ExpoModulesProvider.swift'));
 
   const gen = await generatePackage(products, {
