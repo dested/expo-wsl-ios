@@ -56,7 +56,7 @@ const introspect = z.object({
 });
 
 /** expo config's Info.plist, with Xcode build settings substituted and Xcode-template leftovers fixed. */
-function infoPlist(raw: PlistDict, a: CliArgs, metroPort: string, warnings: string[]): PlistDict {
+function infoPlist(raw: PlistDict, a: CliArgs, metroPort: string, nativeAssets: { appIcon: boolean; splashStoryboard: boolean }, warnings: string[]): PlistDict {
   const vars = {
     DEVELOPMENT_LANGUAGE: 'en',
     EXECUTABLE_NAME: a.name,
@@ -68,11 +68,22 @@ function infoPlist(raw: PlistDict, a: CliArgs, metroPort: string, warnings: stri
   const out = plistDict.parse(substitute(raw, vars));
   // The Xcode template still says armv7; arm64 is what the binary is.
   if (Array.isArray(out.UIRequiredDeviceCapabilities)) out.UIRequiredDeviceCapabilities = ['arm64'];
-  // No storyboard is compiled (yet): a missing launch storyboard letterboxes the app, UILaunchScreen doesn't.
-  if (out.UILaunchStoryboardName !== undefined) {
+  if (nativeAssets.appIcon) {
+    out.CFBundleIcons = {
+      CFBundlePrimaryIcon: {
+        CFBundleIconFiles: ['AppIcon'],
+        CFBundleIconName: 'AppIcon',
+        UIPrerenderedIcon: false,
+      },
+    };
+  }
+  if (nativeAssets.splashStoryboard) {
+    out.UILaunchStoryboardName = 'SplashScreen';
+    delete out.UILaunchScreen;
+  } else if (out.UILaunchStoryboardName !== undefined) {
     delete out.UILaunchStoryboardName;
     out.UILaunchScreen = {};
-    warnings.push('splash: SplashScreen.storyboard is not built yet; using a blank UILaunchScreen');
+    warnings.push('splash: Expo did not generate SplashScreen.storyboard; using a blank UILaunchScreen');
   }
   delete out.LSMinimumSystemVersion;
   // Debug builds load JS from Metro on the LAN; iOS asks for Local Network access first and
@@ -214,6 +225,7 @@ async function main(): Promise<void> {
   console.log(`deployment target: iOS ${deploymentTarget}`);
 
   mkdirSync(a.out, { recursive: true });
+  writeFileSync(join(a.out, 'deployment-target'), `${deploymentTarget}\n`);
   // Every package's effective config, as a starting point for an override in <app>/expo-wsl-ios/configs.
   const resolved = join(a.out, 'configs');
   rmSync(resolved, { recursive: true, force: true });
@@ -268,7 +280,9 @@ async function main(): Promise<void> {
   resources.push(...(await stagePodResources(products, res)));
 
   const metroPort = existsSync(join(a.gen, 'metro-port')) ? (await Bun.file(join(a.gen, 'metro-port')).text()).trim() : '8081';
-  writeFileSync(join(a.out, 'Info.plist'), toPlist(infoPlist(intro.ios?.infoPlist ?? {}, a, metroPort, warnings)));
+  const nativeAssets = z.object({ appIcon: z.boolean(), splashStoryboard: z.boolean() })
+    .parse(await Bun.file(join(a.gen, 'native-assets.json')).json());
+  writeFileSync(join(a.out, 'Info.plist'), toPlist(infoPlist(intro.ios?.infoPlist ?? {}, a, metroPort, nativeAssets, warnings)));
   const ent = intro.ios?.entitlements ?? {};
   if (Object.keys(ent).length > 0) {
     writeFileSync(join(a.out, 'app.entitlements'), toPlist(ent));

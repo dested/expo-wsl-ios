@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
+var __create = Object.create;
+var __getProtoOf = Object.getPrototypeOf;
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __toESM = (mod, isNodeMode, target) => {
+  target = mod != null ? __create(__getProtoOf(mod)) : {};
+  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
+  for (let key of __getOwnPropNames(mod))
+    if (!__hasOwnProp.call(to, key))
+      __defProp(to, key, {
+        get: () => mod[key],
+        enumerable: true
+      });
+  return to;
+};
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // src/cli/index.ts
@@ -313,6 +329,8 @@ async function prep(o) {
     bundleId = `com.${part(userInfo().username)}.${part(cfg.slug)}`;
     console.log(`   no expo.ios.bundleIdentifier: using ${bundleId} (set it in app.json to keep it stable)`);
   }
+  step("iOS app icon + splash screen");
+  await node([join4(PKG_ROOT, "scripts/prep-ios-assets.mjs"), app, dir, bundleId, join4(expoDir, "template.tgz")]);
   const constants = join4(packageDir("expo-constants", expoDir), "scripts/getAppConfig.js");
   if (existsSync4(constants)) {
     mkdirSync(join4(dir, "EXConstants.bundle"), { recursive: true });

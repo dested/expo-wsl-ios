@@ -44,6 +44,53 @@ fi
 echo "   built in $(( $(date +%s) - start )) s"
 bundle=$(ls -d xtool/*.app | head -n1)
 
+assets="$gen/native-assets"
+min_ios=$(cat deployment-target)
+oad="$HOME/omarchy-apple-dev"
+actool=
+if [ -d "$oad/tools/darwin-tools/.build" ]; then
+  actool=$(find "$oad/tools/darwin-tools/.build" -type f -name actool -perm /111 -print -quit)
+fi
+ibtool="$oad/tools/ibtool"
+if [ -d "$assets/Assets.xcassets" ]; then
+  [ -x "$actool" ] || { echo "actool missing from $oad/tools/darwin-tools/.build" >&2; exit 1; }
+  echo "== compile app icon + image assets =="
+  icon_args=()
+  has_icon=$("$HOME/pymobile3-venv/bin/python" -c 'import json,sys; print("1" if json.load(open(sys.argv[1])).get("appIcon") else "0")' "$gen/native-assets.json")
+  [ "$has_icon" = 1 ] && [ -d "$assets/Assets.xcassets/AppIcon.appiconset" ] && icon_args=(--app-icon AppIcon)
+  "$actool" --compile "$bundle" --platform iphoneos --target-device iphone --target-device ipad \
+    --minimum-deployment-target "$min_ios" "${icon_args[@]}" \
+    --output-partial-info-plist "$out/actool-info.plist" "$assets/Assets.xcassets"
+  "$HOME/pymobile3-venv/bin/python" - "$bundle/Info.plist" "$out/actool-info.plist" <<'PY'
+import plistlib, sys
+app_path, partial_path = sys.argv[1:]
+with open(app_path, 'rb') as f:
+    app = plistlib.load(f)
+with open(partial_path, 'rb') as f:
+    partial = plistlib.load(f)
+for key in ('CFBundleIcons', 'CFBundleIcons~ipad'):
+    if key in partial:
+        app[key] = partial[key]
+with open(app_path, 'wb') as f:
+    plistlib.dump(app, f, fmt=plistlib.FMT_XML, sort_keys=False)
+PY
+fi
+if [ -f "$assets/SplashScreen.storyboard" ]; then
+  [ -x "$ibtool" ] || { echo "ibtool missing at $ibtool" >&2; exit 1; }
+  echo "== compile splash storyboard =="
+  ib_storyboard="$out/SplashScreen.storyboard"
+  python3 - "$assets/SplashScreen.storyboard" "$ib_storyboard" <<'PY'
+import re, sys
+source = open(sys.argv[1], encoding='utf-8').read()
+# The distro ibtool uses device IDs to size simulated previews. A launch storyboard
+# has explicit frames and Auto Layout constraints, so drop this Xcode-only annotation.
+source = re.sub(r'(?m)^[ \t]*<device\b[^>]*/>[ \t]*\r?\n?', '', source, count=1)
+open(sys.argv[2], 'w', encoding='utf-8').write(source)
+PY
+  "$ibtool" --minimum-deployment-target "$min_ios" "$ib_storyboard" \
+    --compilation-directory "$bundle"
+fi
+
 # Every @rpath framework the app or an embedded framework links must be embedded too; otherwise
 # dyld kills the app at launch ("Library not loaded") and the phone shows nothing useful.
 missing=$(for bin in "$bundle/$name" "$bundle"/Frameworks/*.framework; do
