@@ -64,8 +64,25 @@ function localWifiPairings(): string[] {
 
 async function scanWifiDevice(pmd: string): Promise<Device> {
   console.log('Scanning for paired iPhones over Wi-Fi...');
+  const remoteDevices = await remoteWifiDevices(pmd);
+  if (remoteDevices.length) return chooseWifiDevice(remoteDevices);
+
   const networkDevices = await wifiDevices(pmd).catch(() => []);
   if (networkDevices.length) return chooseWifiDevice(networkDevices);
+
+  const pairedDevices = localWifiPairings().map((UniqueDeviceID) => ({ UniqueDeviceID }));
+  if (pairedDevices.length) return chooseWifiDevice(pairedDevices);
+
+  // A normal USB Trust does not create the RemotePairing record required for
+  // Bonjour Wi-Fi discovery. If the phone is still attached, bootstrap that
+  // record now instead of making the user discover the extra command.
+  const usb = await usbDevices(pmd).catch(() => []);
+  if (usb.length) {
+    const device = await chooseWifiDevice(usb);
+    console.log('Creating the Wi-Fi pairing record over USB...');
+    await run(pmd, ['lockdown', 'remotepairing', '--udid', device.UniqueDeviceID, '--pair'], { quiet: true });
+    return device;
+  }
 
   const tunneld = start(pmd, ['remote', 'tunneld', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2']);
   try {
@@ -76,11 +93,27 @@ async function scanWifiDevice(pmd: string): Promise<Device> {
     // install step perform the final reachability check.
     const udids = Object.keys(devices).length ? Object.keys(devices) : localWifiPairings();
     if (!udids.length) {
-      throw new Error('no paired iPhone found over Wi-Fi; pair it over USB first and put the phone and PC on the same LAN');
+      throw new Error('no paired iPhone found over Wi-Fi; connect it by USB once to bootstrap RemotePairing, then keep the phone and PC on the same LAN');
     }
     return await chooseWifiDevice(udids.map((UniqueDeviceID) => ({ UniqueDeviceID })));
   } finally {
     if (!tunneld.killed) tunneld.kill();
+  }
+}
+
+async function remoteWifiDevices(pmd: string): Promise<Device[]> {
+  try {
+    const result: unknown = JSON.parse(await run(pmd, ['remote', 'browse', '--no-native', '--timeout', '5'], { quiet: true }));
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return [];
+    const wifi = (result as { wifi?: unknown }).wifi;
+    if (!Array.isArray(wifi)) return [];
+    return wifi.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+      const id = (entry as { identifier?: unknown }).identifier;
+      return typeof id === 'string' ? [{ UniqueDeviceID: id }] : [];
+    });
+  } catch {
+    return [];
   }
 }
 
