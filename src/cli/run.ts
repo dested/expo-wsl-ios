@@ -2,7 +2,7 @@
 import { createInterface } from 'node:readline/promises';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { PKG_ROOT, pymobiledevice3, toPosixPath, usbDevices, wslInherit, type Device } from './env.ts';
+import { PKG_ROOT, pymobiledevice3, toPosixPath, usbDevices, wifiDevices, wslInherit, type Device } from './env.ts';
 import { prep } from './prep.ts';
 import { run, start, step } from './proc.ts';
 
@@ -64,6 +64,9 @@ function localWifiPairings(): string[] {
 
 async function scanWifiDevice(pmd: string): Promise<Device> {
   console.log('Scanning for paired iPhones over Wi-Fi...');
+  const networkDevices = await wifiDevices(pmd).catch(() => []);
+  if (networkDevices.length) return chooseWifiDevice(networkDevices);
+
   const tunneld = start(pmd, ['remote', 'tunneld', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2']);
   try {
     const devices = await waitForTunneld();
@@ -75,22 +78,26 @@ async function scanWifiDevice(pmd: string): Promise<Device> {
     if (!udids.length) {
       throw new Error('no paired iPhone found over Wi-Fi; pair it over USB first and put the phone and PC on the same LAN');
     }
-    console.log('Wi-Fi iPhones found:');
-    udids.forEach((id, index) => console.log(`  ${index + 1}. ${id}`));
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      const answer = await readline.question(`Select a device [1-${udids.length}]: `);
-      const index = Number(answer) - 1;
-      if (!Number.isInteger(index) || index < 0 || index >= udids.length) {
-        throw new Error(`invalid device selection: ${answer}`);
-      }
-      return { UniqueDeviceID: udids[index]! };
-    } finally {
-      readline.close();
-    }
+    return await chooseWifiDevice(udids.map((UniqueDeviceID) => ({ UniqueDeviceID })));
   } finally {
     if (!tunneld.killed) tunneld.kill();
   }
+}
+
+async function chooseWifiDevice(devices: Device[]): Promise<Device> {
+    console.log('Wi-Fi iPhones found:');
+    devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.UniqueDeviceID}`));
+    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const answer = await readline.question(`Select a device [1-${devices.length}]: `);
+      const index = Number(answer) - 1;
+      if (!Number.isInteger(index) || index < 0 || index >= devices.length) {
+        throw new Error(`invalid device selection: ${answer}`);
+      }
+      return devices[index]!;
+    } finally {
+      readline.close();
+    }
 }
 
 async function installOverWifi(pmd: string, ipa: string, udid: string): Promise<void> {

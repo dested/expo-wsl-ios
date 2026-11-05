@@ -187,6 +187,10 @@ var usbmuxList = z.array(z.object({ UniqueDeviceID: z.string(), DeviceName: z.st
 async function usbDevices(pmd) {
   return usbmuxList.parse(JSON.parse(await run(pmd, ["usbmux", "list", "--usb"], { quiet: true })));
 }
+async function wifiDevices(pmd) {
+  const ids = z.array(z.string()).parse(JSON.parse(await run(pmd, ["usbmux", "list", "--network", "--simple"], { quiet: true })));
+  return ids.map((UniqueDeviceID) => ({ UniqueDeviceID }));
+}
 function packageDir(name, from) {
   for (let dir = realpathSync(from);; ) {
     const candidate = join2(dir, "node_modules", name);
@@ -421,6 +425,9 @@ function localWifiPairings() {
 }
 async function scanWifiDevice(pmd) {
   console.log("Scanning for paired iPhones over Wi-Fi...");
+  const networkDevices = await wifiDevices(pmd).catch(() => []);
+  if (networkDevices.length)
+    return chooseWifiDevice(networkDevices);
   const tunneld = start(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"]);
   try {
     const devices = await waitForTunneld();
@@ -428,22 +435,25 @@ async function scanWifiDevice(pmd) {
     if (!udids.length) {
       throw new Error("no paired iPhone found over Wi-Fi; pair it over USB first and put the phone and PC on the same LAN");
     }
-    console.log("Wi-Fi iPhones found:");
-    udids.forEach((id, index) => console.log(`  ${index + 1}. ${id}`));
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      const answer = await readline.question(`Select a device [1-${udids.length}]: `);
-      const index = Number(answer) - 1;
-      if (!Number.isInteger(index) || index < 0 || index >= udids.length) {
-        throw new Error(`invalid device selection: ${answer}`);
-      }
-      return { UniqueDeviceID: udids[index] };
-    } finally {
-      readline.close();
-    }
+    return await chooseWifiDevice(udids.map((UniqueDeviceID) => ({ UniqueDeviceID })));
   } finally {
     if (!tunneld.killed)
       tunneld.kill();
+  }
+}
+async function chooseWifiDevice(devices) {
+  console.log("Wi-Fi iPhones found:");
+  devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.UniqueDeviceID}`));
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await readline.question(`Select a device [1-${devices.length}]: `);
+    const index = Number(answer) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= devices.length) {
+      throw new Error(`invalid device selection: ${answer}`);
+    }
+    return devices[index];
+  } finally {
+    readline.close();
   }
 }
 async function installOverWifi(pmd, ipa, udid) {

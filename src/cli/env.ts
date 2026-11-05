@@ -92,6 +92,12 @@ export async function usbDevices(pmd: string): Promise<Device[]> {
   return usbmuxList.parse(JSON.parse(await run(pmd, ['usbmux', 'list', '--usb'], { quiet: true })));
 }
 
+/** Devices currently connected through usbmuxd's Wi-Fi transport. */
+export async function wifiDevices(pmd: string): Promise<Device[]> {
+  const ids = z.array(z.string()).parse(JSON.parse(await run(pmd, ['usbmux', 'list', '--network', '--simple'], { quiet: true })));
+  return ids.map((UniqueDeviceID) => ({ UniqueDeviceID }));
+}
+
 /** Resolve a package's directory the way Node would from `from` (handles hoisting). */
 /** Node's node_modules lookup for a package's folder. Not require.resolve('<name>/package.json'):
  *  packages with an `exports` map that leaves out ./package.json (expo-symbols) reject that. */
