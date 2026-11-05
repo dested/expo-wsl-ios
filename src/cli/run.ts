@@ -1,5 +1,6 @@
 // `expo-wsl-ios run`: prep on Windows, build + sign in WSL, install over USB or Wi-Fi.
 import { createInterface } from 'node:readline/promises';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { PKG_ROOT, pymobiledevice3, toPosixPath, usbDevices, wslInherit, type Device } from './env.ts';
 import { prep } from './prep.ts';
@@ -50,12 +51,27 @@ async function waitForTunneld(timeoutMs = 30_000): Promise<Record<string, unknow
   return devices;
 }
 
+function localWifiPairings(): string[] {
+  const folder = join(process.env['USERPROFILE'] ?? '', '.pymobiledevice3');
+  try {
+    return readdirSync(folder)
+      .map((name) => /^remote_(.+?)(?:\.plist)?$/.exec(name)?.[1])
+      .filter((id): id is string => id !== undefined);
+  } catch {
+    return [];
+  }
+}
+
 async function scanWifiDevice(pmd: string): Promise<Device> {
   console.log('Scanning for paired iPhones over Wi-Fi...');
   const tunneld = start(pmd, ['remote', 'tunneld', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2']);
   try {
     const devices = await waitForTunneld();
-    const udids = Object.keys(devices);
+    // The live tunneld listing can remain empty when Bonjour discovery is
+    // blocked by Windows firewall/profile settings. Pairing records still
+    // provide the real UDIDs, so use them as a selection fallback and let the
+    // install step perform the final reachability check.
+    const udids = Object.keys(devices).length ? Object.keys(devices) : localWifiPairings();
     if (!udids.length) {
       throw new Error('no paired iPhone found over Wi-Fi; pair it over USB first and put the phone and PC on the same LAN');
     }

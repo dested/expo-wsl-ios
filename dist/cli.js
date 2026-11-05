@@ -251,6 +251,7 @@ WSL builds run on ${cpuCap()} vCPUs at low priority (EXPO_WSL_IOS_CPUS to change
 
 // src/cli/run.ts
 import { createInterface } from "node:readline/promises";
+import { readdirSync } from "node:fs";
 import { join as join5 } from "node:path";
 
 // src/cli/prep.ts
@@ -410,12 +411,20 @@ async function waitForTunneld(timeoutMs = 30000) {
   }
   return devices;
 }
+function localWifiPairings() {
+  const folder = join5(process.env["USERPROFILE"] ?? "", ".pymobiledevice3");
+  try {
+    return readdirSync(folder).map((name) => /^remote_(.+?)(?:\.plist)?$/.exec(name)?.[1]).filter((id) => id !== undefined);
+  } catch {
+    return [];
+  }
+}
 async function scanWifiDevice(pmd) {
   console.log("Scanning for paired iPhones over Wi-Fi...");
   const tunneld = start(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"]);
   try {
     const devices = await waitForTunneld();
-    const udids = Object.keys(devices);
+    const udids = Object.keys(devices).length ? Object.keys(devices) : localWifiPairings();
     if (!udids.length) {
       throw new Error("no paired iPhone found over Wi-Fi; pair it over USB first and put the phone and PC on the same LAN");
     }
