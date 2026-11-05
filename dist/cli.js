@@ -391,8 +391,8 @@ async function pickDevice(pmd, udid) {
     throw new Error(`several devices connected; pass --udid (${devices.map((d) => `${d.DeviceName ?? "?"} ${d.UniqueDeviceID}`).join(", ")})`);
   return first;
 }
-async function waitForTunneld() {
-  const deadline = Date.now() + 1e4;
+async function waitForTunneld(timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
   let devices = {};
   while (Date.now() < deadline) {
     try {
@@ -411,6 +411,7 @@ async function waitForTunneld() {
   return devices;
 }
 async function scanWifiDevice(pmd) {
+  console.log("Scanning for paired iPhones over Wi-Fi...");
   const tunneld = start(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"]);
   try {
     const devices = await waitForTunneld();

@@ -29,8 +29,8 @@ async function pickDevice(pmd: string, udid: string | undefined): Promise<Device
   return first;
 }
 
-async function waitForTunneld(): Promise<Record<string, unknown[]>> {
-  const deadline = Date.now() + 10_000;
+async function waitForTunneld(timeoutMs = 30_000): Promise<Record<string, unknown[]>> {
+  const deadline = Date.now() + timeoutMs;
   let devices: Record<string, unknown[]> = {};
   while (Date.now() < deadline) {
     try {
@@ -51,6 +51,7 @@ async function waitForTunneld(): Promise<Record<string, unknown[]>> {
 }
 
 async function scanWifiDevice(pmd: string): Promise<Device> {
+  console.log('Scanning for paired iPhones over Wi-Fi...');
   const tunneld = start(pmd, ['remote', 'tunneld', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2']);
   try {
     const devices = await waitForTunneld();
