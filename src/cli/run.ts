@@ -119,7 +119,7 @@ async function remoteWifiDevices(pmd: string): Promise<Device[]> {
 
 async function chooseWifiDevice(devices: Device[]): Promise<Device> {
     console.log('Wi-Fi iPhones found:');
-    devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.UniqueDeviceID}`));
+    devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.DeviceName ?? 'iPhone'} (${device.UniqueDeviceID})`));
     const readline = createInterface({ input: process.stdin, output: process.stdout });
     try {
       const answer = await readline.question(`Select a device [1-${devices.length}]: `);

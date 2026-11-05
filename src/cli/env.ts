@@ -94,8 +94,7 @@ export async function usbDevices(pmd: string): Promise<Device[]> {
 
 /** Devices currently connected through usbmuxd's Wi-Fi transport. */
 export async function wifiDevices(pmd: string): Promise<Device[]> {
-  const ids = z.array(z.string()).parse(JSON.parse(await run(pmd, ['usbmux', 'list', '--network', '--simple'], { quiet: true })));
-  return ids.map((UniqueDeviceID) => ({ UniqueDeviceID }));
+  return usbmuxList.parse(JSON.parse(await run(pmd, ['usbmux', 'list', '--network'], { quiet: true })));
 }
 
 /** Resolve a package's directory the way Node would from `from` (handles hoisting). */

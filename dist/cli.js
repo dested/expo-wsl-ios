@@ -188,8 +188,7 @@ async function usbDevices(pmd) {
   return usbmuxList.parse(JSON.parse(await run(pmd, ["usbmux", "list", "--usb"], { quiet: true })));
 }
 async function wifiDevices(pmd) {
-  const ids = z.array(z.string()).parse(JSON.parse(await run(pmd, ["usbmux", "list", "--network", "--simple"], { quiet: true })));
-  return ids.map((UniqueDeviceID) => ({ UniqueDeviceID }));
+  return usbmuxList.parse(JSON.parse(await run(pmd, ["usbmux", "list", "--network"], { quiet: true })));
 }
 function packageDir(name, from) {
   for (let dir = realpathSync(from);; ) {
@@ -474,7 +473,7 @@ async function remoteWifiDevices(pmd) {
 }
 async function chooseWifiDevice(devices) {
   console.log("Wi-Fi iPhones found:");
-  devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.UniqueDeviceID}`));
+  devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.DeviceName ?? "iPhone"} (${device.UniqueDeviceID})`));
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const answer = await readline.question(`Select a device [1-${devices.length}]: `);
