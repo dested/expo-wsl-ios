@@ -47,7 +47,7 @@ Build trees live in `~/build/<app folder>` inside the distro. The `.ipa` is writ
 
 ## 3. Windows: install
 
-`pymobiledevice3 apps install` talks to the usbmuxd that comes with Apple's "Apple Devices" app (`127.0.0.1:27015`). The iPhone stays owned by Windows; there's no USB passthrough into WSL.
+For USB, `pymobiledevice3 apps install` talks to the usbmuxd that comes with Apple's "Apple Devices" app (`127.0.0.1:27015`). For Wi-Fi, `run --wifi` starts a temporary `pymobiledevice3 remote tunneld`, discovers paired phones through Bonjour, prompts for a selection, and runs the install through `apps install --tunnel <UDID>`. Pass `--udid <UDID>` to skip selection. The iPhone stays owned by Windows; there's no USB passthrough into WSL.
 
 ## Where things live
 

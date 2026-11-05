@@ -31,10 +31,12 @@ The README's "Setup, step by step" section has the click-by-click for the manual
 
 ```
 npx expo-wsl-ios run            # prep (Windows) -> build + sign (WSL) -> install (USB)
+npx expo-wsl-ios run --wifi     # same pipeline, scan/select a paired phone and install through Wi-Fi
 ```
 
 - Takes the bundle id from `expo.ios.bundleIdentifier`, or uses `com.<user>.<slug>`.
 - Several devices: add `--udid <id>`. To build without installing: `--no-install` (the `.ipa` lands in `.expo/wsl-ios/`).
+- Wi-Fi installs require a phone paired once over USB, Wi-Fi connections enabled, and the same LAN. `--wifi` scans and prompts for a phone; add `--udid <id>` for a non-interactive run. `pymobiledevice3 remote tunneld` may require an elevated Windows terminal.
 - When it succeeds, tell the user to tap the app on the phone. The first time, iOS asks them to enable Developer Mode.
 
 ## When the build fails
