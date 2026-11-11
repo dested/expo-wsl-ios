@@ -92,14 +92,6 @@ function runInherit(cmd, args, opts = {}) {
     child.on("close", (code) => code === 0 ? resolve() : reject(new CommandError([cmd, ...args].join(" "), code, "", "")));
   });
 }
-function start(cmd, args, opts = {}) {
-  return spawn(cmd, args, {
-    ...opts.cwd === undefined ? {} : { cwd: opts.cwd },
-    env: { ...process.env, ...opts.env },
-    windowsHide: true,
-    stdio: "ignore"
-  });
-}
 async function succeeds(cmd, args, opts = {}) {
   try {
     await run(cmd, args, { ...opts, quiet: true });
@@ -254,6 +246,7 @@ WSL builds run on ${cpuCap()} vCPUs at low priority (EXPO_WSL_IOS_CPUS to change
 
 // src/cli/run.ts
 import { createInterface } from "node:readline/promises";
+import { spawn as spawn2 } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join as join5 } from "node:path";
 
@@ -395,21 +388,59 @@ async function pickDevice(pmd, udid) {
     throw new Error(`several devices connected; pass --udid (${devices.map((d) => `${d.DeviceName ?? "?"} ${d.UniqueDeviceID}`).join(", ")})`);
   return first;
 }
-async function waitForTunneld(timeoutMs = 30000) {
+async function tunnelDevices() {
+  try {
+    const response = await fetch("http://127.0.0.1:49151", { signal: AbortSignal.timeout(500) });
+    if (!response.ok)
+      return;
+    const listing = await response.json();
+    if (listing && typeof listing === "object" && !Array.isArray(listing)) {
+      return Object.fromEntries(Object.entries(listing).filter(([, entries]) => Array.isArray(entries) && entries.length > 0));
+    }
+  } catch {}
+  return;
+}
+async function openWifiTunnel(pmd) {
+  if (await tunnelDevices() !== undefined)
+    return { check() {}, close() {} };
+  const child = spawn2(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let output = "";
+  let failure;
+  const capture = (chunk) => {
+    output = (output + chunk.toString()).slice(-6000);
+  };
+  child.stdout?.on("data", capture);
+  child.stderr?.on("data", capture);
+  child.on("error", (error) => {
+    failure = error;
+  });
+  child.on("exit", (code, signal) => {
+    failure ??= new Error(`tunneld exited ${code ?? signal}`);
+  });
+  return {
+    check() {
+      if (failure)
+        throw new Error(`Wi-Fi tunnel failed: ${failure.message}
+${output.trim()}
+If access was denied, run the command in an elevated Windows terminal.`);
+    },
+    close() {
+      if (child.exitCode === null && child.signalCode === null && !child.killed)
+        child.kill();
+    }
+  };
+}
+async function waitForTunneld(tunnel, udid, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let devices = {};
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch("http://127.0.0.1:49151", { signal: AbortSignal.timeout(500) });
-      if (response.ok) {
-        const listing = await response.json();
-        if (listing && typeof listing === "object" && !Array.isArray(listing)) {
-          devices = listing;
-          if (Object.keys(devices).length)
-            return devices;
-        }
-      }
-    } catch {}
+    tunnel.check();
+    devices = await tunnelDevices() ?? {};
+    if (udid ? devices[udid]?.length : Object.keys(devices).length)
+      return devices;
     await new Promise((resolve2) => setTimeout(resolve2, 250));
   }
   return devices;
@@ -422,12 +453,12 @@ function localWifiPairings() {
     return [];
   }
 }
-async function scanWifiDevice(pmd) {
+async function scanWifiDevice(pmd, tunnel) {
   console.log("Scanning for paired iPhones over Wi-Fi...");
   const networkDevices = await wifiDevices(pmd).catch(() => []);
   const usb = await usbDevices(pmd).catch(() => []);
   const names = new Map([...networkDevices, ...usb].map((device) => [device.UniqueDeviceID, device.DeviceName]));
-  const addNames = (devices) => devices.map((device) => ({
+  const addNames = (devices2) => devices2.map((device) => ({
     ...device,
     DeviceName: device.DeviceName ?? names.get(device.UniqueDeviceID)
   }));
@@ -448,18 +479,12 @@ async function scanWifiDevice(pmd) {
     await run(pmd, ["lockdown", "remotepairing", "--udid", device.UniqueDeviceID, "--pair"], { quiet: true });
     return device;
   }
-  const tunneld = start(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"]);
-  try {
-    const devices = await waitForTunneld();
-    const udids = Object.keys(devices).length ? Object.keys(devices) : localWifiPairings();
-    if (!udids.length) {
-      throw new Error("no paired iPhone found over Wi-Fi; connect it by USB once to bootstrap RemotePairing, then keep the phone and PC on the same LAN");
-    }
-    return await chooseWifiDevice(udids.map((UniqueDeviceID) => ({ UniqueDeviceID })));
-  } finally {
-    if (!tunneld.killed)
-      tunneld.kill();
+  const devices = tunnel ? await waitForTunneld(tunnel) : {};
+  const udids = Object.keys(devices);
+  if (!udids.length) {
+    throw new Error("no paired iPhone found over Wi-Fi; connect it by USB once to bootstrap RemotePairing, then keep the phone and PC on the same LAN");
   }
+  return chooseWifiDevice(addNames(udids.map((UniqueDeviceID) => ({ UniqueDeviceID }))));
 }
 async function remoteWifiDevices(pmd) {
   try {
@@ -495,56 +520,53 @@ async function chooseWifiDevice(devices) {
     readline.close();
   }
 }
-async function installOverWifi(pmd, ipa, udid) {
-  const tunneld = start(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"]);
-  let installError;
-  try {
-    const devices = await waitForTunneld();
-    if (!devices[udid])
-      throw new Error(`Wi-Fi tunnel did not discover ${udid}; check pairing, Wi-Fi, and that both devices are on the same LAN`);
-    await run(pmd, ["--tunnel", udid, "apps", "install", ipa], { quiet: true });
-  } catch (e) {
-    installError = e;
-  } finally {
-    if (!tunneld.killed)
-      tunneld.kill();
+async function requireWifiDevice(tunnel, udid) {
+  const devices = await waitForTunneld(tunnel, udid);
+  if (!devices[udid]?.length) {
+    throw new Error(`Wi-Fi tunnel did not discover ${udid}; unlock the phone and check RemotePairing and the LAN connection. To refresh pairing over USB, run: pymobiledevice3 lockdown remotepairing --udid ${udid} --pair`);
   }
-  if (installError)
-    throw installError;
 }
 async function runCommand(o) {
   const t0 = performance.now();
   const pmd = pymobiledevice3();
   if (!pmd)
     throw new Error("pymobiledevice3 not found: `uv tool install pymobiledevice3` (or set EXPO_WSL_IOS_PMD)");
-  const device = o.wifi ? o.udid ? { UniqueDeviceID: o.udid } : await scanWifiDevice(pmd) : await pickDevice(pmd, o.udid);
-  console.log(`   device: ${device.DeviceName ?? "?"} (${device.UniqueDeviceID})`);
-  const p = await prep({ app: o.app, exclude: o.exclude, host: o.host, port: o.port, bundleId: o.bundleId });
-  const ipa = join5(o.app, ".expo", "wsl-ios", `${p.productName}.ipa`);
-  step("generate + build + sign in WSL");
-  await wslInherit([
-    "bash",
-    toPosixPath(join5(PKG_ROOT, "scripts/wsl-build.sh")),
-    toPosixPath(o.app),
-    toPosixPath(p.dir),
-    p.productName,
-    p.bundleId,
-    device.UniqueDeviceID,
-    o.exclude.join(","),
-    toPosixPath(ipa)
-  ]);
-  if (o.install) {
-    step("install");
-    if (o.wifi)
-      await installOverWifi(pmd, ipa, device.UniqueDeviceID);
-    else
-      await run(pmd, ["apps", "install", ipa], { quiet: true });
-  }
-  const secs = ((performance.now() - t0) / 1000).toFixed(0);
-  console.log(`
+  const tunnel = o.wifi && o.install ? await openWifiTunnel(pmd) : undefined;
+  try {
+    const device = o.wifi ? o.udid ? { UniqueDeviceID: o.udid } : await scanWifiDevice(pmd, tunnel) : await pickDevice(pmd, o.udid);
+    console.log(`   device: ${device.DeviceName ?? "?"} (${device.UniqueDeviceID})`);
+    if (tunnel)
+      await requireWifiDevice(tunnel, device.UniqueDeviceID);
+    const p = await prep({ app: o.app, exclude: o.exclude, host: o.host, port: o.port, bundleId: o.bundleId });
+    const ipa = join5(o.app, ".expo", "wsl-ios", `${p.productName}.ipa`);
+    step("generate + build + sign in WSL");
+    await wslInherit([
+      "bash",
+      toPosixPath(join5(PKG_ROOT, "scripts/wsl-build.sh")),
+      toPosixPath(o.app),
+      toPosixPath(p.dir),
+      p.productName,
+      p.bundleId,
+      device.UniqueDeviceID,
+      o.exclude.join(","),
+      toPosixPath(ipa)
+    ]);
+    if (o.install) {
+      step("install");
+      if (tunnel) {
+        await requireWifiDevice(tunnel, device.UniqueDeviceID);
+        await run(pmd, ["apps", "install", "--tunnel", device.UniqueDeviceID, ipa], { quiet: true });
+      } else
+        await run(pmd, ["apps", "install", ipa], { quiet: true });
+    }
+    const secs = ((performance.now() - t0) / 1000).toFixed(0);
+    console.log(`
 ${o.install ? "Installed" : "Built"} ${p.name} in ${secs} s${o.install ? ". Tap it on the phone to launch." : `: ${ipa}`}`);
-  console.log(`Live reload: run \`npx expo start --port ${p.metro.split(":")[1] ?? "8081"}\` here, and allow Local Network access when iOS asks.`);
-  console.log("Without Metro the app runs the JS bundle embedded at build time.");
+    console.log(`Live reload: run \`npx expo start --port ${p.metro.split(":")[1] ?? "8081"}\` here, and allow Local Network access when iOS asks.`);
+    console.log("Without Metro the app runs the JS bundle embedded at build time.");
+  } finally {
+    tunnel?.close();
+  }
 }
 
 // src/cli/setup.ts
