@@ -480,16 +480,17 @@ async function remoteWifiDevices(pmd) {
   }
 }
 async function chooseWifiDevice(devices) {
+  const uniqueDevices = [...new Map(devices.map((device) => [device.UniqueDeviceID, device])).values()];
   console.log("Wi-Fi iPhones found:");
-  devices.forEach((device, index) => console.log(`  ${index + 1}. ${device.DeviceName ?? "iPhone"} (${device.UniqueDeviceID})`));
+  uniqueDevices.forEach((device, index) => console.log(`  ${index + 1}. ${device.DeviceName ?? "iPhone"} (${device.UniqueDeviceID})`));
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = await readline.question(`Select a device [1-${devices.length}]: `);
+    const answer = await readline.question(`Select a device [1-${uniqueDevices.length}]: `);
     const index = Number(answer) - 1;
-    if (!Number.isInteger(index) || index < 0 || index >= devices.length) {
+    if (!Number.isInteger(index) || index < 0 || index >= uniqueDevices.length) {
       throw new Error(`invalid device selection: ${answer}`);
     }
-    return devices[index];
+    return uniqueDevices[index];
   } finally {
     readline.close();
   }
