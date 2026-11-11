@@ -118,6 +118,10 @@ export async function prep(o: PrepOptions): Promise<PrepResult> {
     bundleId = `com.${part(userInfo().username)}.${part(cfg.slug)}`;
     console.log(`   no expo.ios.bundleIdentifier: using ${bundleId} (set it in app.json to keep it stable)`);
   }
+
+  step('iOS app icon + splash screen');
+  await node([join(PKG_ROOT, 'scripts/prep-ios-assets.mjs'), app, dir, bundleId, join(expoDir, 'template.tgz')]);
+
   const constants = join(packageDir('expo-constants', expoDir), 'scripts/getAppConfig.js');
   if (existsSync(constants)) {
     mkdirSync(join(dir, 'EXConstants.bundle'), { recursive: true });

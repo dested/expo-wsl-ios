@@ -1,5 +1,5 @@
 // Process helpers for the Windows half. Plain Node APIs: this file ships to `npx` users.
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -62,6 +62,16 @@ export function runInherit(cmd: string, args: string[], opts: RunOptions = {}): 
     child.stderr?.pipe(process.stderr, { end: false });
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve() : reject(new CommandError([cmd, ...args].join(' '), code, '', ''))));
+  });
+}
+
+/** Start a long-lived helper owned by the current command. */
+export function start(cmd: string, args: string[], opts: RunOptions = {}): ChildProcess {
+  return spawn(cmd, args, {
+    ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
+    env: { ...process.env, ...opts.env },
+    windowsHide: true,
+    stdio: 'ignore',
   });
 }
 

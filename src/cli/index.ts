@@ -13,8 +13,8 @@ const USAGE = `expo-wsl-ios <command> [options]
            --xip <Xcode.xip>  --asc-key <AuthKey_XXXX.p8>  --issuer-id <uuid>  [--key-id <id>]
            [--rootfs <tar or url>]  [--location <dir for the distro>]
   doctor   Check every prerequisite and print the fix for each failure
-  run      Build, sign and install the Expo app in the current directory on the USB iPhone
-           [--udid <id>] [--bundle-id <id>] [--exclude a,b] [--host <lan ip>] [--port <metro port>]
+  run      Build, sign and install the Expo app in the current directory on the USB/Wi-Fi iPhone
+           [--wifi --udid <id>] [--bundle-id <id>] [--exclude a,b] [--host <lan ip>] [--port <metro port>]
            [--no-install]
   prep     Only the Windows-side JS steps (codegen, config, bundle), for debugging
 
@@ -41,6 +41,7 @@ async function main(): Promise<number> {
       host: { type: 'string' },
       port: { type: 'string' },
       'no-install': { type: 'boolean' },
+      wifi: { type: 'boolean' },
       app: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -58,7 +59,7 @@ async function main(): Promise<number> {
     case 'doctor':
       return (await doctor(app)) ? 0 : 1;
     case 'run':
-      await runCommand({ app, exclude, host: values.host, port, bundleId: values['bundle-id'], udid: values.udid, install: values['no-install'] !== true });
+      await runCommand({ app, exclude, host: values.host, port, bundleId: values['bundle-id'], udid: values.udid, install: values['no-install'] !== true, wifi: values.wifi === true });
       return 0;
     case 'prep': {
       const p = await prep({ app, exclude, host: values.host, port, bundleId: values['bundle-id'] });
