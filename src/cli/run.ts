@@ -33,6 +33,7 @@ async function pickDevice(pmd: string, udid: string | undefined): Promise<Device
 
 interface WifiTunnel {
   check(): void;
+  details(): string;
   close(): void;
 }
 
@@ -52,8 +53,13 @@ async function tunnelDevices(): Promise<Record<string, unknown[]> | undefined> {
 
 async function openWifiTunnel(pmd: string): Promise<WifiTunnel> {
   // Reuse a user's running daemon without terminating it at the end.
-  if (await tunnelDevices() !== undefined) return { check() {}, close() {} };
-  const child = spawn(pmd, ['remote', 'tunneld', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2'], {
+  if (await tunnelDevices() !== undefined) return {
+    check() {}, close() {},
+    details: () => 'Using an existing tunneld on port 49151. Ensure that daemon was started with --protocol tcp.',
+  };
+  // Python 3.12 defaults to QUIC, which iOS 18.2+ no longer supports.
+  // Always request TCP rather than relying on the Python-dependent default.
+  const child = spawn(pmd, ['remote', 'tunneld', '--protocol', 'tcp', '--wifi', '--no-usb', '--no-usbmux', '--no-mobdev2'], {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -69,6 +75,12 @@ async function openWifiTunnel(pmd: string): Promise<WifiTunnel> {
   return {
     check() {
       if (failure) throw new Error(`Wi-Fi tunnel failed: ${failure.message}\n${output.trim()}\nIf access was denied, run the command in an elevated Windows terminal.`);
+    },
+    details() {
+      const hint = /sslpsk|set_psk_client_callback/i.test(output)
+        ? '\nTCP tunnels need Python 3.13+ on this installation. Run: uv tool install --python 3.13 --force pymobiledevice3'
+        : '';
+      return output.trim() + hint;
     },
     close() {
       if (child.exitCode === null && child.signalCode === null && !child.killed) child.kill();
@@ -179,7 +191,7 @@ async function chooseWifiDevice(devices: Device[]): Promise<Device> {
 async function requireWifiDevice(tunnel: WifiTunnel, udid: string): Promise<void> {
   const devices = await waitForTunneld(tunnel, udid);
   if (!devices[udid]?.length) {
-    throw new Error(`Wi-Fi tunnel did not discover ${udid}; unlock the phone and check RemotePairing and the LAN connection. To refresh pairing over USB, run: pymobiledevice3 lockdown remotepairing --udid ${udid} --pair`);
+    throw new Error(`Wi-Fi TCP tunnel did not connect to ${udid}; unlock the phone and check the LAN connection.\n${tunnel.details()}`);
   }
 }
 

@@ -402,8 +402,12 @@ async function tunnelDevices() {
 }
 async function openWifiTunnel(pmd) {
   if (await tunnelDevices() !== undefined)
-    return { check() {}, close() {} };
-  const child = spawn2(pmd, ["remote", "tunneld", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"], {
+    return {
+      check() {},
+      close() {},
+      details: () => "Using an existing tunneld on port 49151. Ensure that daemon was started with --protocol tcp."
+    };
+  const child = spawn2(pmd, ["remote", "tunneld", "--protocol", "tcp", "--wifi", "--no-usb", "--no-usbmux", "--no-mobdev2"], {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -426,6 +430,11 @@ async function openWifiTunnel(pmd) {
         throw new Error(`Wi-Fi tunnel failed: ${failure.message}
 ${output.trim()}
 If access was denied, run the command in an elevated Windows terminal.`);
+    },
+    details() {
+      const hint = /sslpsk|set_psk_client_callback/i.test(output) ? `
+TCP tunnels need Python 3.13+ on this installation. Run: uv tool install --python 3.13 --force pymobiledevice3` : "";
+      return output.trim() + hint;
     },
     close() {
       if (child.exitCode === null && child.signalCode === null && !child.killed)
@@ -523,7 +532,8 @@ async function chooseWifiDevice(devices) {
 async function requireWifiDevice(tunnel, udid) {
   const devices = await waitForTunneld(tunnel, udid);
   if (!devices[udid]?.length) {
-    throw new Error(`Wi-Fi tunnel did not discover ${udid}; unlock the phone and check RemotePairing and the LAN connection. To refresh pairing over USB, run: pymobiledevice3 lockdown remotepairing --udid ${udid} --pair`);
+    throw new Error(`Wi-Fi TCP tunnel did not connect to ${udid}; unlock the phone and check the LAN connection.
+${tunnel.details()}`);
   }
 }
 async function runCommand(o) {
