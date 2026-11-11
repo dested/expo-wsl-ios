@@ -82,7 +82,10 @@ export function pymobiledevice3(): string | undefined {
   if (env && existsSync(env)) return env;
   // `uv tool install` puts it in ~/.local/bin, which is often not on PATH yet.
   const uvBin = join(process.env['USERPROFILE'] ?? '', '.local', 'bin', 'pymobiledevice3.exe');
-  return which('pymobiledevice3') ?? (existsSync(uvBin) ? uvBin : undefined);
+  // Prefer uv's concrete executable over a stale PATH shim. On Windows the
+  // shim can still point at a removed Python installation while the uv tool
+  // itself remains valid and is the path users can invoke directly.
+  return (existsSync(uvBin) ? uvBin : undefined) ?? which('pymobiledevice3');
 }
 
 const usbmuxList = z.array(z.object({ UniqueDeviceID: z.string(), DeviceName: z.string().optional() }));

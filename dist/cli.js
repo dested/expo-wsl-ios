@@ -181,7 +181,7 @@ function pymobiledevice3() {
   if (env && existsSync2(env))
     return env;
   const uvBin = join2(process.env["USERPROFILE"] ?? "", ".local", "bin", "pymobiledevice3.exe");
-  return which("pymobiledevice3") ?? (existsSync2(uvBin) ? uvBin : undefined);
+  return (existsSync2(uvBin) ? uvBin : undefined) ?? which("pymobiledevice3");
 }
 var usbmuxList = z.array(z.object({ UniqueDeviceID: z.string(), DeviceName: z.string().optional() }));
 async function usbDevices(pmd) {
