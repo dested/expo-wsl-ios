@@ -414,7 +414,10 @@ async function openWifiTunnel(pmd) {
   let output = "";
   let failure;
   const capture = (chunk) => {
-    output = (output + chunk.toString()).slice(-6000);
+    const meaningful = chunk.toString().split(/\r?\n/).filter((line) => !/^INFO:\s+127\.0\.0\.1:\d+ - "GET \/ HTTP\/1\.1" 200 OK$/.test(line)).join(`
+`);
+    if (meaningful.trim())
+      output = (output + meaningful).slice(-6000);
   };
   child.stdout?.on("data", capture);
   child.stderr?.on("data", capture);
@@ -442,7 +445,7 @@ TCP tunnels need Python 3.13+ on this installation. Run: uv tool install --pytho
     }
   };
 }
-async function waitForTunneld(tunnel, udid, timeoutMs = 30000) {
+async function waitForTunneld(tunnel, udid, timeoutMs = 120000) {
   const deadline = Date.now() + timeoutMs;
   let devices = {};
   while (Date.now() < deadline) {
@@ -452,7 +455,8 @@ async function waitForTunneld(tunnel, udid, timeoutMs = 30000) {
       return devices;
     await new Promise((resolve2) => setTimeout(resolve2, 250));
   }
-  return devices;
+  tunnel.check();
+  return await tunnelDevices() ?? devices;
 }
 function localWifiPairings() {
   const folder = join5(process.env["USERPROFILE"] ?? "", ".pymobiledevice3");
@@ -545,8 +549,10 @@ async function runCommand(o) {
   try {
     const device = o.wifi ? o.udid ? { UniqueDeviceID: o.udid } : await scanWifiDevice(pmd, tunnel) : await pickDevice(pmd, o.udid);
     console.log(`   device: ${device.DeviceName ?? "?"} (${device.UniqueDeviceID})`);
-    if (tunnel)
+    if (tunnel) {
+      console.log("Connecting to the iPhone over Wi-Fi (up to 2 minutes)...");
       await requireWifiDevice(tunnel, device.UniqueDeviceID);
+    }
     const p = await prep({ app: o.app, exclude: o.exclude, host: o.host, port: o.port, bundleId: o.bundleId });
     const ipa = join5(o.app, ".expo", "wsl-ios", `${p.productName}.ipa`);
     step("generate + build + sign in WSL");

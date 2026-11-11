@@ -28,6 +28,29 @@ bash "$pkg/scripts/frameworks.sh" "$nm" "$fw" debug
 echo "== expo2spm =="
 bun "$gen_cli" --app "$app" --node-modules "$nm" --gen "$gen" --out "$out" --fw "$fw" --name "$name" --bundle-id "$bid" --exclude "$exclude"
 
+# react-native-audio-api declares these vendored static libraries through its
+# CocoaPods podspec, but expo2spm does not currently carry them into Package.swift.
+# Force-load every archive so miniaudio's Opus/Vorbis decoder references resolve.
+python3 - "$out/Package.swift" "$out/.mirror/react-native-audio-api/common/cpp/audioapi/external/iphoneos" "$name" <<'PY'
+from pathlib import Path
+import sys
+
+package_file, library_dir, app_name = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+source = package_file.read_text()
+target_start = source.index(f'            name: "{app_name}",')
+target_end = source.index("        ),", target_start)
+target = source[target_start:target_end]
+needle = "            swiftSettings: ["
+if "linkerSettings: [.unsafeFlags([\"-force_load\"" not in target:
+    libs = ("libopusfile.a", "libopus.a", "libogg.a", "libvorbis.a", "libvorbisenc.a", "libvorbisfile.a")
+    flags = ", ".join(f'"-Xlinker", "-force_load", "-Xlinker", "{library_dir / lib}"' for lib in libs)
+    if needle not in target:
+        raise SystemExit("Could not find app linker settings in generated Package.swift")
+    swift_end = target.index("            ],", target.index(needle)) + len("            ],")
+    target = target[:swift_end] + f"\n            linkerSettings: [.unsafeFlags([{flags}])]," + target[swift_end:]
+    package_file.write_text(source[:target_start] + target + source[target_end:])
+PY
+
 echo "== xtool dev build (log: $out/build.log) =="
 cd "$out"
 start=$(date +%s)

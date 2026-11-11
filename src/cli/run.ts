@@ -65,7 +65,14 @@ async function openWifiTunnel(pmd: string): Promise<WifiTunnel> {
   });
   let output = '';
   let failure: Error | undefined;
-  const capture = (chunk: Buffer): void => { output = (output + chunk.toString()).slice(-6000); };
+  const capture = (chunk: Buffer): void => {
+    // Polling produces hundreds of access-log lines. Keep connection errors
+    // and tunnel creation messages in the bounded diagnostic buffer instead.
+    const meaningful = chunk.toString().split(/\r?\n/)
+      .filter((line) => !/^INFO:\s+127\.0\.0\.1:\d+ - "GET \/ HTTP\/1\.1" 200 OK$/.test(line))
+      .join('\n');
+    if (meaningful.trim()) output = (output + meaningful).slice(-6000);
+  };
   child.stdout?.on('data', capture);
   child.stderr?.on('data', capture);
   child.on('error', (error) => { failure = error; });
@@ -88,7 +95,7 @@ async function openWifiTunnel(pmd: string): Promise<WifiTunnel> {
   };
 }
 
-async function waitForTunneld(tunnel: WifiTunnel, udid?: string, timeoutMs = 30_000): Promise<Record<string, unknown[]>> {
+async function waitForTunneld(tunnel: WifiTunnel, udid?: string, timeoutMs = 120_000): Promise<Record<string, unknown[]>> {
   const deadline = Date.now() + timeoutMs;
   let devices: Record<string, unknown[]> = {};
   while (Date.now() < deadline) {
@@ -97,7 +104,10 @@ async function waitForTunneld(tunnel: WifiTunnel, udid?: string, timeoutMs = 30_
     if (udid ? devices[udid]?.length : Object.keys(devices).length) return devices;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  return devices;
+  // A tunnel may finish negotiating during the final polling delay. Read the
+  // listing once more before declaring that the connection timed out.
+  tunnel.check();
+  return await tunnelDevices() ?? devices;
 }
 
 function localWifiPairings(): string[] {
@@ -208,7 +218,10 @@ export async function runCommand(o: RunCommandOptions): Promise<void> {
       ? o.udid ? { UniqueDeviceID: o.udid } : await scanWifiDevice(pmd, tunnel)
       : await pickDevice(pmd, o.udid);
     console.log(`   device: ${device.DeviceName ?? '?'} (${device.UniqueDeviceID})`);
-    if (tunnel) await requireWifiDevice(tunnel, device.UniqueDeviceID);
+    if (tunnel) {
+      console.log('Connecting to the iPhone over Wi-Fi (up to 2 minutes)...');
+      await requireWifiDevice(tunnel, device.UniqueDeviceID);
+    }
 
     const p = await prep({ app: o.app, exclude: o.exclude, host: o.host, port: o.port, bundleId: o.bundleId });
     const ipa = join(o.app, '.expo', 'wsl-ios', `${p.productName}.ipa`);
