@@ -424,16 +424,24 @@ function localWifiPairings() {
 }
 async function scanWifiDevice(pmd) {
   console.log("Scanning for paired iPhones over Wi-Fi...");
-  const remoteDevices = await remoteWifiDevices(pmd);
+  const networkDevices = await wifiDevices(pmd).catch(() => []);
+  const usb = await usbDevices(pmd).catch(() => []);
+  const names = new Map([...networkDevices, ...usb].map((device) => [device.UniqueDeviceID, device.DeviceName]));
+  const addNames = (devices) => devices.map((device) => ({
+    ...device,
+    DeviceName: device.DeviceName ?? names.get(device.UniqueDeviceID)
+  }));
+  const remoteDevices = addNames(await remoteWifiDevices(pmd));
   if (remoteDevices.length)
     return chooseWifiDevice(remoteDevices);
-  const networkDevices = await wifiDevices(pmd).catch(() => []);
   if (networkDevices.length)
     return chooseWifiDevice(networkDevices);
-  const pairedDevices = localWifiPairings().map((UniqueDeviceID) => ({ UniqueDeviceID }));
+  const pairedDevices = localWifiPairings().map((UniqueDeviceID) => ({
+    UniqueDeviceID,
+    DeviceName: names.get(UniqueDeviceID)
+  }));
   if (pairedDevices.length)
     return chooseWifiDevice(pairedDevices);
-  const usb = await usbDevices(pmd).catch(() => []);
   if (usb.length) {
     const device = await chooseWifiDevice(usb);
     console.log("Creating the Wi-Fi pairing record over USB...");

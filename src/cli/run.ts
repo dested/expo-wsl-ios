@@ -64,19 +64,31 @@ function localWifiPairings(): string[] {
 
 async function scanWifiDevice(pmd: string): Promise<Device> {
   console.log('Scanning for paired iPhones over Wi-Fi...');
-  const remoteDevices = await remoteWifiDevices(pmd);
+  // `remote browse` supplies the authenticated RemotePairing identifiers,
+  // while usbmux listings are the reliable source of the human-readable name.
+  // Merge them so Wi-Fi discovery does not fall back to showing only a UDID.
+  const networkDevices = await wifiDevices(pmd).catch(() => []);
+  const usb = await usbDevices(pmd).catch(() => []);
+  const names = new Map([...networkDevices, ...usb].map((device) => [device.UniqueDeviceID, device.DeviceName]));
+  const addNames = (devices: Device[]): Device[] => devices.map((device) => ({
+    ...device,
+    DeviceName: device.DeviceName ?? names.get(device.UniqueDeviceID),
+  }));
+
+  const remoteDevices = addNames(await remoteWifiDevices(pmd));
   if (remoteDevices.length) return chooseWifiDevice(remoteDevices);
 
-  const networkDevices = await wifiDevices(pmd).catch(() => []);
   if (networkDevices.length) return chooseWifiDevice(networkDevices);
 
-  const pairedDevices = localWifiPairings().map((UniqueDeviceID) => ({ UniqueDeviceID }));
+  const pairedDevices = localWifiPairings().map((UniqueDeviceID) => ({
+    UniqueDeviceID,
+    DeviceName: names.get(UniqueDeviceID),
+  }));
   if (pairedDevices.length) return chooseWifiDevice(pairedDevices);
 
   // A normal USB Trust does not create the RemotePairing record required for
   // Bonjour Wi-Fi discovery. If the phone is still attached, bootstrap that
   // record now instead of making the user discover the extra command.
-  const usb = await usbDevices(pmd).catch(() => []);
   if (usb.length) {
     const device = await chooseWifiDevice(usb);
     console.log('Creating the Wi-Fi pairing record over USB...');
